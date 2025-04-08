@@ -372,61 +372,98 @@ def main():
                         st.error(f"예측 과정에서 오류 발생: {str(e)}")
 
     # 탭 2) 샘플 예측
-    with tabs[1]:
-        st.subheader("샘플 예측 (상위 3개만 표시)")
-
-        if st.session_state.index is None:
-            st.warning("인덱스 파일을 로드할 수 없습니다. 파일 경로를 확인하세요.")
-        else:
-            try:
-                sample_df = test_df.iloc[:3].copy().reset_index(drop=True)
-
-                for idx, row in sample_df.iterrows():
-                    st.markdown(f"**샘플 {idx+1}**")
-                    st.markdown(f"- 작업활동: {row['작업활동 및 내용']}")
-                    st.markdown(f"- 유해위험요인: {row['유해위험요인 및 환경측면 영향']}")
-                    st.markdown(f"- 실제 빈도: {row['빈도']}, 실제 강도: {row['강도']}, 실제 T: {row['T']}")
-
-                    query_text = f"{row['작업활동 및 내용']} {row['유해위험요인 및 환경측면 영향']}"
-
-                    # 쿼리 임베딩
-                    query_embedding = embed_texts_with_openai([query_text])[0]
-                    query_embedding_array = np.array([query_embedding], dtype='float32')
-
-                    # FAISS 검색
-                    distances, indices = st.session_state.index.search(query_embedding_array, k_similar)
-                    
-                    # 인덱스 범위 검증
-                    valid_indices = [idx for idx in indices[0] if idx < len(st.session_state.retriever_pool_df)]
-                    if len(valid_indices) == 0:
-                        st.error(f"샘플 {idx+1}: 인덱스와 데이터프레임 간 불일치가 발생했습니다.")
-                        continue
+    # 탭 2) 샘플 예측
+        with tabs[1]:
+            st.subheader("샘플 예측 (상위 3개만 표시)")
+        
+            if st.session_state.index is None:
+                st.warning("인덱스 파일을 로드할 수 없습니다. 파일 경로를 확인하세요.")
+            else:
+                # 디버깅 정보 출력
+                st.write(f"인덱스 벡터 수: {st.session_state.index.ntotal}")
+                st.write(f"데이터프레임 행 수: {len(st.session_state.retriever_pool_df)}")
+                st.write(f"test_df 행 수: {len(test_df)}")
+                
+                try:
+                    sample_df = test_df.iloc[:3].copy().reset_index(drop=True)
+                    st.write(f"샘플 데이터프레임 행 수: {len(sample_df)}")
+        
+                    for idx, row in sample_df.iterrows():
+                        st.markdown(f"**샘플 {idx+1}**")
+                        st.markdown(f"- 작업활동: {row['작업활동 및 내용']}")
+                        st.markdown(f"- 유해위험요인: {row['유해위험요인 및 환경측면 영향']}")
+                        st.markdown(f"- 실제 빈도: {row['빈도']}, 실제 강도: {row['강도']}, 실제 T: {row['T']}")
+        
+                        query_text = f"{row['작업활동 및 내용']} {row['유해위험요인 및 환경측면 영향']}"
+                        st.write(f"쿼리 텍스트: {query_text}")
+        
+                        try:
+                            # 쿼리 임베딩
+                            st.write("임베딩 생성 중...")
+                            query_embedding = embed_texts_with_openai([query_text])[0]
+                            query_embedding_array = np.array([query_embedding], dtype='float32')
+                            st.write("임베딩 생성 완료")
+        
+                            # FAISS 검색
+                            st.write("유사 문서 검색 중...")
+                            distances, indices = st.session_state.index.search(query_embedding_array, k_similar)
+                            st.write(f"검색된 인덱스: {indices[0]}")
+                            st.write(f"검색된 거리: {distances[0]}")
+                            
+                            # 인덱스 범위 검증
+                            st.write(f"최대 인덱스 값: {max(indices[0]) if len(indices[0]) > 0 else 'No indices'}")
+                            st.write(f"데이터프레임 크기: {len(st.session_state.retriever_pool_df)}")
+                            
+                            valid_indices = [i for i in indices[0] if i < len(st.session_state.retriever_pool_df)]
+                            st.write(f"유효한 인덱스 수: {len(valid_indices)}")
+                            
+                            if len(valid_indices) == 0:
+                                st.error(f"샘플 {idx+1}: 인덱스와 데이터프레임 간 불일치가 발생했습니다.")
+                                st.error("검색된 인덱스가 모두 데이터프레임 범위를 벗어납니다.")
+                                continue
+                                
+                            retrieved_docs = st.session_state.retriever_pool_df.iloc[valid_indices]
+                            st.write(f"검색된 문서 수: {len(retrieved_docs)}")
+                            
+                            # 첫 번째 검색 문서 내용 샘플 표시
+                            if len(retrieved_docs) > 0:
+                                st.write("첫 번째 검색 문서 내용 샘플:")
+                                st.write(retrieved_docs.iloc[0]['content'][:200] + "...")
+        
+                            # GPT 호출
+                            st.write("프롬프트 생성 중...")
+                            prompt = construct_prompt(retrieved_docs, query_text)
+                            if not prompt:
+                                st.error(f"샘플 {idx+1}: 프롬프트 생성에 실패했습니다.")
+                                continue
+                            
+                            st.write("GPT 모델 호출 중...")
+                            generated_output = generate_with_gpt4(prompt)
+                            st.write(f"GPT 원본 출력: {generated_output}")
+        
+                            # GPT 예측 파싱
+                            parse_result = parse_gpt_output(generated_output)
+                            if parse_result is not None:
+                                f_val, i_val, t_val = parse_result
+                                grade = determine_grade(t_val)
+                                st.write(f"**GPT 예측** → 빈도: {f_val}, 강도: {i_val}, T: {t_val}, 등급: {grade}")
+                            else:
+                                st.write(f"**GPT 예측(파싱 실패)**: {generated_output}")
                         
-                    retrieved_docs = st.session_state.retriever_pool_df.iloc[valid_indices]
-
-                    # GPT 호출
-                    prompt = construct_prompt(retrieved_docs, query_text)
-                    if not prompt:
-                        st.error(f"샘플 {idx+1}: 프롬프트 생성에 실패했습니다.")
-                        continue
+                        except Exception as e:
+                            st.error(f"샘플 {idx+1} 처리 중 오류 발생: {str(e)}")
+                            import traceback
+                            st.error(f"스택 트레이스: {traceback.format_exc()}")
                         
-                    generated_output = generate_with_gpt4(prompt)
-
-                    # GPT 예측 파싱
-                    parse_result = parse_gpt_output(generated_output)
-                    if parse_result is not None:
-                        f_val, i_val, t_val = parse_result
-                        grade = determine_grade(t_val)
-                        st.write(f"**GPT 예측** → 빈도: {f_val}, 강도: {i_val}, T: {t_val}, 등급: {grade}")
-                    else:
-                        st.write(f"**GPT 예측**: {generated_output}")
-                    
-                    st.markdown("---")
-
-                st.markdown("### 예측 완료")
-                st.info("상기 표시된 샘플 3개는 실제 데이터셋에서 일부만 발췌한 예시입니다.")
-            except Exception as e:
-                st.error(f"샘플 예측 과정에서 오류 발생: {str(e)}")
+                        st.markdown("---")
+        
+                    st.markdown("### 예측 완료")
+                    st.info("상기 표시된 샘플 3개는 실제 데이터셋에서 일부만 발췌한 예시입니다.")
+                
+                except Exception as e:
+                    st.error(f"샘플 예측 과정에서 오류 발생: {str(e)}")
+                    import traceback
+                    st.error(f"스택 트레이스: {traceback.format_exc()}")
 
 if __name__ == "__main__":
     try:
