@@ -133,8 +133,41 @@ def generate_with_gpt4(prompt):
         st.error(f"GPT-4 API 호출 중 오류 발생: {str(e)}")
         return None
 
-def embed_texts_with_openai(texts, model="text-embedding-3-large"):
+# 인덱스 자동 로드 (처음 실행시)
+if not st.session_state.index_loaded:
+    with st.spinner('인덱스 파일을 자동으로 로드하는 중...'):
+        try:
+            faiss_index = load_index_file("phase1_general_api_updated.index")
+            if faiss_index is not None:
+                st.session_state.index = faiss_index
+                st.session_state.index_loaded = True
+                st.success(f"인덱스 파일이 자동으로 로드되었습니다! 차원: {faiss_index.d}")
+                # 임베딩 모델을 인덱스 차원에 맞게 설정
+                if faiss_index.d == 1536:
+                    st.session_state.embedding_model = "text-embedding-3-large"
+                elif faiss_index.d == 768:
+                    st.session_state.embedding_model = "text-embedding-ada-002"
+                elif faiss_index.d == 1024:
+                    st.session_state.embedding_model = "text-embedding-3-small"
+                else:
+                    st.warning(f"인덱스 차원({faiss_index.d})에 맞는 임베딩 모델을 식별할 수 없습니다. 기본값 사용.")
+                    st.session_state.embedding_model = "text-embedding-3-large"
+            else:
+                st.error("인덱스 자동 로드 실패")
+                return
+        except Exception as e:
+            st.error(f"인덱스 로드 중 오류 발생: {str(e)}")
+            return
+
+# embed_texts_with_openai 함수 수정
+def embed_texts_with_openai(texts, model=None):
     """OpenAI 임베딩 API로 텍스트 리스트를 임베딩."""
+    # 세션 상태에서 모델 가져오기 (없으면 기본값)
+    if model is None:
+        model = st.session_state.get('embedding_model', "text-embedding-3-large")
+        
+    st.write(f"사용 중인 임베딩 모델: {model}")
+    
     embeddings = []
     progress_bar = st.progress(0)
     total = len(texts)
@@ -145,9 +178,16 @@ def embed_texts_with_openai(texts, model="text-embedding-3-large"):
             response = openai.Embedding.create(model=model, input=[text])
             embedding = response["data"][0]["embedding"]
             embeddings.append(embedding)
+            
+            # 첫 번째 임베딩 후 차원 확인 및 출력
+            if idx == 0:
+                st.write(f"생성된 임베딩 차원: {len(embedding)}")
+                if hasattr(st.session_state, 'index') and st.session_state.index is not None:
+                    if len(embedding) != st.session_state.index.d:
+                        st.error(f"임베딩 차원({len(embedding)})이 인덱스 차원({st.session_state.index.d})과 일치하지 않습니다!")
         except Exception as e:
             st.error(f"텍스트 임베딩 중 오류 발생: {str(e)}")
-            embeddings.append([0]*1536)
+            embeddings.append([0]*st.session_state.index.d)  # 인덱스 차원에 맞게 조정
         
         progress_bar.progress((idx + 1) / total)
     
