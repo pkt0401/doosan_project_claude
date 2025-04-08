@@ -108,7 +108,7 @@ def validate_api_key(api_key):
         openai.api_key = api_key
         # 간단한 API 호출로 검증
         openai.Embedding.create(
-            model="text-embedding-3-large",
+            model="text-embedding-3-small",
             input=["API 키 검증용 텍스트"]
         )
         return True
