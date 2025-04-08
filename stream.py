@@ -19,6 +19,28 @@ dataset_options = {
     "SWRO 전기작업표준 (플랜트)": "SWRO 전기작업표준 (플랜트)"
 }
 
+def check_files_exist():
+    """필요한 파일들이 존재하는지 확인하는 함수"""
+    missing_files = []
+    for dataset_name in dataset_options.values():
+        if not os.path.exists(f"{dataset_name}.xlsx"):
+            missing_files.append(f"{dataset_name}.xlsx")
+    
+    if not os.path.exists("phase1_general_api_updated.index"):
+        missing_files.append("phase1_general_api_updated.index")
+    
+    if not os.path.exists("cau.png"):
+        missing_files.append("cau.png")
+    
+    if not os.path.exists("doosan.png"):
+        missing_files.append("doosan.png")
+    
+    if missing_files:
+        st.error(f"다음 파일을 찾을 수 없습니다: {', '.join(missing_files)}")
+        st.info("모든 필요 파일이 현재 디렉토리에 있는지 확인하세요.")
+        return False
+    return True
+
 def determine_grade(value):
     """빈도*강도 결과 T에 따른 등급 결정 함수."""
     if 16 <= value <= 25:
@@ -37,7 +59,9 @@ def determine_grade(value):
 def load_data(selected_dataset_name):
     """선택된 이름에 대응하는 Excel 데이터 불러오기."""
     try:
-        df = pd.read_excel(f"{selected_dataset_name}.xlsx")
+        file_path = f"{selected_dataset_name}.xlsx"
+        st.info(f"데이터 파일 '{file_path}'을 로드하는 중...")
+        df = pd.read_excel(file_path)
 
         # 전처리
         if '삭제 Del' in df.columns:
@@ -59,10 +83,11 @@ def load_data(selected_dataset_name):
         df = df.rename(columns={df.columns[6]: 'T'})
         df['등급'] = df['T'].apply(determine_grade)
 
+        st.success(f"데이터 로드 완료: {len(df)}개 행 로드됨")
         return df
     except Exception as e:
         st.error(f"데이터 로드 중 오류 발생: {str(e)}")
-        st.write(f"시도한 파일 경로: {selected_dataset_name}")
+        st.write(f"시도한 파일 경로: {selected_dataset_name}.xlsx")
         return None
 
 def load_index_file(index_filename="phase1_general_api_updated.index"):
@@ -76,6 +101,20 @@ def load_index_file(index_filename="phase1_general_api_updated.index"):
     except Exception as e:
         st.error(f"인덱스 파일 로드 중 오류 발생: {str(e)}")
         return None
+
+def validate_api_key(api_key):
+    """API 키 유효성 검증"""
+    try:
+        openai.api_key = api_key
+        # 간단한 API 호출로 검증
+        openai.Embedding.create(
+            model="text-embedding-3-large",
+            input=["API 키 검증용 텍스트"]
+        )
+        return True
+    except Exception as e:
+        st.error(f"API 키 검증 실패: {str(e)}")
+        return False
 
 def generate_with_gpt4(prompt):
     """GPT-4 모델로부터 예측 결과를 받아오는 함수."""
@@ -117,14 +156,18 @@ def embed_texts_with_openai(texts, model="text-embedding-3-large"):
 def construct_prompt(retrieved_docs, query_text):
     """검색된 문서들로부터 예시를 구성해 GPT 프롬프트 생성."""
     retrieved_examples = []
-    for _, doc in retrieved_docs.iterrows():
-        content_parts = doc['content'].split()
-        example_input = ' '.join(content_parts[:-6])
-        frequency = int(content_parts[-4])
-        intensity = int(content_parts[-3])
-        T_value = frequency * intensity
-        example_output = f'{{"빈도": {frequency}, "강도": {intensity}, "T": {T_value}}}'
-        retrieved_examples.append((example_input, example_output))
+    try:
+        for _, doc in retrieved_docs.iterrows():
+            content_parts = doc['content'].split()
+            example_input = ' '.join(content_parts[:-6])
+            frequency = int(content_parts[-4])
+            intensity = int(content_parts[-3])
+            T_value = frequency * intensity
+            example_output = f'{{"빈도": {frequency}, "강도": {intensity}, "T": {T_value}}}'
+            retrieved_examples.append((example_input, example_output))
+    except Exception as e:
+        st.error(f"프롬프트 구성 중 오류 발생: {str(e)}")
+        return None
     
     prompt = ""
     for i, (example_input, example_output) in enumerate(retrieved_examples, 1):
@@ -147,6 +190,9 @@ def parse_gpt_output(gpt_output):
     GPT 출력에서 {빈도, 강도, T}를 정규표현식으로 추출.
     매칭 성공 시 (빈도, 강도, T)를 리턴, 실패 시 None 리턴.
     """
+    if not gpt_output:
+        return None
+        
     json_pattern = r'\{"빈도":\s*([1-5]),\s*"강도":\s*([1-5]),\s*"T":\s*([0-9]+)\}'
     match = re.search(json_pattern, gpt_output)
     if match:
@@ -163,6 +209,10 @@ def main():
         page_icon="🏗️",
         layout="wide"
     )
+
+    # 파일 존재 확인
+    if not check_files_exist():
+        st.stop()
 
     # ----- 세션 상태 초기화 -----
     # (index, user inputs 등을 보관)
@@ -189,13 +239,13 @@ def main():
     with col1:
         try:
             st.image("cau.png", width=200)
-        except Exception:
-            st.error("중앙대학교 로고 로딩 실패")
+        except Exception as e:
+            st.error(f"중앙대학교 로고 로딩 실패: {str(e)}")
     with col2:
         try:
             st.image("doosan.png", width=200)
-        except Exception:
-            st.error("두산에너빌리티 로고 로딩 실패")
+        except Exception as e:
+            st.error(f"두산에너빌리티 로고 로딩 실패: {str(e)}")
 
     # API 키 입력
     api_key = st.text_input(
@@ -206,36 +256,56 @@ def main():
     if not api_key:
         st.warning("계속하려면 OpenAI API 키를 입력하세요.")
         return
+    
+    # API 키 검증
+    if not validate_api_key(api_key):
+        st.warning("유효하지 않은 API 키입니다. 올바른 API 키를 입력하세요.")
+        return
+    
     openai.api_key = api_key
 
     # 데이터 불러오기
     with st.spinner('데이터를 불러오는 중...'):
         df = load_data(dataset_options[selected_dataset_name])
     if df is None:
+        st.error("데이터 로드에 실패했습니다. 파일 경로를 확인하세요.")
         return
 
     # train/test 분할
-    train_df, test_df = train_test_split(df, test_size=0.1, random_state=42)
-    test_df = test_df[['작업활동 및 내용', '유해위험요인 및 환경측면 영향', '빈도', '강도', 'T']]
+    try:
+        train_df, test_df = train_test_split(df, test_size=0.1, random_state=42)
+        test_df = test_df[['작업활동 및 내용', '유해위험요인 및 환경측면 영향', '빈도', '강도', 'T']]
+    except Exception as e:
+        st.error(f"데이터 분할 중 오류 발생: {str(e)}")
+        return
 
     # Retriever Pool 구성 (세션 상태에 저장)
     if st.session_state.retriever_pool_df is None:
-        retriever_pool_df = train_df.copy()
-        retriever_pool_df['content'] = retriever_pool_df.apply(
-            lambda row: ' '.join(row.values.astype(str)), axis=1
-        )
-        st.session_state.retriever_pool_df = retriever_pool_df
+        try:
+            retriever_pool_df = train_df.copy()
+            retriever_pool_df['content'] = retriever_pool_df.apply(
+                lambda row: ' '.join(row.values.astype(str)), axis=1
+            )
+            st.session_state.retriever_pool_df = retriever_pool_df
+        except Exception as e:
+            st.error(f"검색 풀 구성 중 오류 발생: {str(e)}")
+            return
     
     # 인덱스 자동 로드 (처음 실행시)
     if not st.session_state.index_loaded:
         with st.spinner('인덱스 파일을 자동으로 로드하는 중...'):
-            faiss_index = load_index_file("phase1_general_api_updated.index")
-            if faiss_index is not None:
-                st.session_state.index = faiss_index
-                st.session_state.index_loaded = True
-                st.success("인덱스 파일이 자동으로 로드되었습니다!")
-            else:
-                st.error("인덱스 자동 로드 실패")
+            try:
+                faiss_index = load_index_file("phase1_general_api_updated.index")
+                if faiss_index is not None:
+                    st.session_state.index = faiss_index
+                    st.session_state.index_loaded = True
+                    st.success("인덱스 파일이 자동으로 로드되었습니다!")
+                else:
+                    st.error("인덱스 자동 로드 실패")
+                    return
+            except Exception as e:
+                st.error(f"인덱스 로드 중 오류 발생: {str(e)}")
+                return
     
     # ----- 탭 구분 -----
     tabs = st.tabs(["사용자 입력 예측", "샘플 예측"])
@@ -263,25 +333,43 @@ def main():
                 else:
                     query_text = f"{user_work} {user_risk}"
                     
-                    # 쿼리 임베딩
-                    query_embedding = embed_texts_with_openai([query_text])[0]
-                    query_embedding_array = np.array([query_embedding], dtype='float32')
-                    
-                    # 유사 문서 검색
-                    distances, indices = st.session_state.index.search(query_embedding_array, k_similar)
-                    retrieved_docs = st.session_state.retriever_pool_df.iloc[indices[0]]
+                    try:
+                        # 쿼리 임베딩
+                        with st.spinner('쿼리 임베딩 생성 중...'):
+                            query_embedding = embed_texts_with_openai([query_text])[0]
+                            query_embedding_array = np.array([query_embedding], dtype='float32')
+                        
+                        # 유사 문서 검색
+                        with st.spinner('유사 사례 검색 중...'):
+                            distances, indices = st.session_state.index.search(query_embedding_array, k_similar)
+                            
+                            # 인덱스 범위 검증
+                            valid_indices = [idx for idx in indices[0] if idx < len(st.session_state.retriever_pool_df)]
+                            if len(valid_indices) == 0:
+                                st.error("인덱스와 데이터프레임 간 불일치가 발생했습니다.")
+                                return
+                                
+                            retrieved_docs = st.session_state.retriever_pool_df.iloc[valid_indices]
 
-                    # GPT 프롬프트 생성 & 호출
-                    prompt = construct_prompt(retrieved_docs, query_text)
-                    generated_output = generate_with_gpt4(prompt)
+                        # GPT 프롬프트 생성 & 호출
+                        with st.spinner('GPT 모델 호출 중...'):
+                            prompt = construct_prompt(retrieved_docs, query_text)
+                            if not prompt:
+                                st.error("프롬프트 생성에 실패했습니다.")
+                                return
+                                
+                            generated_output = generate_with_gpt4(prompt)
 
-                    st.markdown(f"**사용자 입력 쿼리**: {query_text}")
-                    parse_result = parse_gpt_output(generated_output)
-                    if parse_result is not None:
-                        f_val, i_val, t_val = parse_result
-                        st.write(f"GPT 예측 → 빈도: {f_val}, 강도: {i_val}, T: {t_val}")
-                    else:
-                        st.write(f"GPT 예측(원문): {generated_output}")
+                        st.markdown(f"**사용자 입력 쿼리**: {query_text}")
+                        parse_result = parse_gpt_output(generated_output)
+                        if parse_result is not None:
+                            f_val, i_val, t_val = parse_result
+                            grade = determine_grade(t_val)
+                            st.write(f"GPT 예측 → 빈도: {f_val}, 강도: {i_val}, T: {t_val}, 등급: {grade}")
+                        else:
+                            st.write(f"GPT 예측(원문): {generated_output}")
+                    except Exception as e:
+                        st.error(f"예측 과정에서 오류 발생: {str(e)}")
 
     # 탭 2) 샘플 예측
     with tabs[1]:
@@ -290,40 +378,55 @@ def main():
         if st.session_state.index is None:
             st.warning("인덱스 파일을 로드할 수 없습니다. 파일 경로를 확인하세요.")
         else:
-            sample_df = test_df.iloc[:3].copy().reset_index(drop=True)
+            try:
+                sample_df = test_df.iloc[:3].copy().reset_index(drop=True)
 
-            for idx, row in sample_df.iterrows():
-                st.markdown(f"**샘플 {idx+1}**")
-                st.markdown(f"- 작업활동: {row['작업활동 및 내용']}")
-                st.markdown(f"- 유해위험요인: {row['유해위험요인 및 환경측면 영향']}")
-                st.markdown(f"- 실제 빈도: {row['빈도']}, 실제 강도: {row['강도']}, 실제 T: {row['T']}")
+                for idx, row in sample_df.iterrows():
+                    st.markdown(f"**샘플 {idx+1}**")
+                    st.markdown(f"- 작업활동: {row['작업활동 및 내용']}")
+                    st.markdown(f"- 유해위험요인: {row['유해위험요인 및 환경측면 영향']}")
+                    st.markdown(f"- 실제 빈도: {row['빈도']}, 실제 강도: {row['강도']}, 실제 T: {row['T']}")
 
-                query_text = f"{row['작업활동 및 내용']} {row['유해위험요인 및 환경측면 영향']}"
+                    query_text = f"{row['작업활동 및 내용']} {row['유해위험요인 및 환경측면 영향']}"
 
-                # 쿼리 임베딩
-                query_embedding = embed_texts_with_openai([query_text])[0]
-                query_embedding_array = np.array([query_embedding], dtype='float32')
+                    # 쿼리 임베딩
+                    query_embedding = embed_texts_with_openai([query_text])[0]
+                    query_embedding_array = np.array([query_embedding], dtype='float32')
 
-                # FAISS 검색
-                distances, indices = st.session_state.index.search(query_embedding_array, k_similar)
-                retrieved_docs = st.session_state.retriever_pool_df.iloc[indices[0]]
+                    # FAISS 검색
+                    distances, indices = st.session_state.index.search(query_embedding_array, k_similar)
+                    
+                    # 인덱스 범위 검증
+                    valid_indices = [idx for idx in indices[0] if idx < len(st.session_state.retriever_pool_df)]
+                    if len(valid_indices) == 0:
+                        st.error(f"샘플 {idx+1}: 인덱스와 데이터프레임 간 불일치가 발생했습니다.")
+                        continue
+                        
+                    retrieved_docs = st.session_state.retriever_pool_df.iloc[valid_indices]
 
-                # GPT 호출
-                prompt = construct_prompt(retrieved_docs, query_text)
-                generated_output = generate_with_gpt4(prompt)
+                    # GPT 호출
+                    prompt = construct_prompt(retrieved_docs, query_text)
+                    if not prompt:
+                        st.error(f"샘플 {idx+1}: 프롬프트 생성에 실패했습니다.")
+                        continue
+                        
+                    generated_output = generate_with_gpt4(prompt)
 
-                # GPT 예측 파싱
-                parse_result = parse_gpt_output(generated_output)
-                if parse_result is not None:
-                    f_val, i_val, t_val = parse_result
-                    st.write(f"**GPT 예측** → 빈도: {f_val}, 강도: {i_val}, T: {t_val}")
-                else:
-                    st.write(f"**GPT 예측**: {generated_output}")
-                
-                st.markdown("---")
+                    # GPT 예측 파싱
+                    parse_result = parse_gpt_output(generated_output)
+                    if parse_result is not None:
+                        f_val, i_val, t_val = parse_result
+                        grade = determine_grade(t_val)
+                        st.write(f"**GPT 예측** → 빈도: {f_val}, 강도: {i_val}, T: {t_val}, 등급: {grade}")
+                    else:
+                        st.write(f"**GPT 예측**: {generated_output}")
+                    
+                    st.markdown("---")
 
-            st.markdown("### 예측 완료")
-            st.info("상기 표시된 샘플 3개는 실제 데이터셋에서 일부만 발췌한 예시입니다.")
+                st.markdown("### 예측 완료")
+                st.info("상기 표시된 샘플 3개는 실제 데이터셋에서 일부만 발췌한 예시입니다.")
+            except Exception as e:
+                st.error(f"샘플 예측 과정에서 오류 발생: {str(e)}")
 
 if __name__ == "__main__":
     try:
