@@ -729,3 +729,27 @@ with tabs[2]:
                 else:
                     st.error("개선대책 생성 결과를 파싱할 수 없습니다.")
                     st.write("GPT 원문 응답:", generated_output)
+
+from PIL import Image
+import os
+
+st.markdown('<hr style="margin-top: 50px;">', unsafe_allow_html=True)
+st.markdown('<div style="display: flex; justify-content: space-between; align-items: center;">', unsafe_allow_html=True)
+
+col1, col2 = st.columns(2)
+
+with col1:
+    if os.path.exists("cau.png"):
+        cau_logo = Image.open("cau.png")
+        st.image(cau_logo, width=150)
+    else:
+        st.warning("cau.png 파일을 찾을 수 없습니다.")
+
+with col2:
+    if os.path.exists("doosan.png"):
+        doosan_logo = Image.open("doosan.png")
+        st.image(doosan_logo, width=180)
+    else:
+        st.warning("doosan.png 파일을 찾을 수 없습니다.")
+
+st.markdown('</div>', unsafe_allow_html=True)
