@@ -9,7 +9,6 @@ from sklearn.metrics import mean_squared_error
 import re
 import os
 from tqdm import tqdm
-import pickle
 
 # ----- 전역 변수 (데이터셋 선택 옵션) -----
 dataset_options = {
@@ -171,6 +170,8 @@ def main():
         st.session_state.index = None
     if "retriever_pool_df" not in st.session_state:
         st.session_state.retriever_pool_df = None
+    if "index_loaded" not in st.session_state:
+        st.session_state.index_loaded = False
 
     # 메인 타이틀
     st.title("생성형 AI 기반 위험성 평가 시스템")
@@ -225,43 +226,31 @@ def main():
         )
         st.session_state.retriever_pool_df = retriever_pool_df
     
-    # ----- 탭 구분 -----
-    tabs = st.tabs(["인덱스 불러오기", "사용자 입력 예측", "샘플 예측"])
-
-    # 탭 1) 인덱스 불러오기
-    with tabs[0]:
-        st.subheader("미리 계산된 인덱스 불러오기")
-
-        if st.session_state.index is not None:
-            st.success("이미 인덱스가 로드되었습니다!")
-        else:
-            index_file = st.selectbox(
-                "인덱스 파일 선택", 
-                ["phase1_general_api_updated.index", "phase2_general_api_updated.index"], 
-                index=0
-            )
-            
-            if st.button("인덱스 불러오기", key="load_index"):
-                with st.spinner('인덱스 파일을 불러오는 중...'):
-                    faiss_index = load_index_file(index_file)
-                    if faiss_index is not None:
-                        st.session_state.index = faiss_index
-                    else:
-                        st.error("인덱스 로드 실패")
+    # 인덱스 자동 로드 (처음 실행시)
+    if not st.session_state.index_loaded:
+        with st.spinner('인덱스 파일을 자동으로 로드하는 중...'):
+            faiss_index = load_index_file("phase1_general_api_updated.index")
+            if faiss_index is not None:
+                st.session_state.index = faiss_index
+                st.session_state.index_loaded = True
+                st.success("인덱스 파일이 자동으로 로드되었습니다!")
             else:
-                st.info("아직 인덱스가 로드되지 않았습니다. [인덱스 불러오기]를 눌러주세요.")
+                st.error("인덱스 자동 로드 실패")
+    
+    # ----- 탭 구분 -----
+    tabs = st.tabs(["사용자 입력 예측", "샘플 예측"])
 
     # ----- 공통 설정 (사이드바 등) -----
     with st.sidebar:
         st.header("📊 분석 설정")
         k_similar = st.slider("유사 사례 검색 수", min_value=1, max_value=10, value=5)
 
-    # 탭 2) 사용자 입력 예측
-    with tabs[1]:
+    # 탭 1) 사용자 입력 예측
+    with tabs[0]:
         st.subheader("사용자 입력 예측")
 
         if st.session_state.index is None:
-            st.warning("먼저 [인덱스 불러오기] 탭에서 인덱스를 불러오세요.")
+            st.warning("인덱스 파일을 로드할 수 없습니다. 파일 경로를 확인하세요.")
         else:
             with st.form("user_input_form"):
                 user_work = st.text_input("작업활동 (사용자 입력):", key="form_user_work")
@@ -294,12 +283,12 @@ def main():
                     else:
                         st.write(f"GPT 예측(원문): {generated_output}")
 
-    # 탭 3) 샘플 예측
-    with tabs[2]:
+    # 탭 2) 샘플 예측
+    with tabs[1]:
         st.subheader("샘플 예측 (상위 3개만 표시)")
 
         if st.session_state.index is None:
-            st.warning("먼저 [인덱스 불러오기] 탭에서 인덱스를 불러오세요.")
+            st.warning("인덱스 파일을 로드할 수 없습니다. 파일 경로를 확인하세요.")
         else:
             sample_df = test_df.iloc[:3].copy().reset_index(drop=True)
 
