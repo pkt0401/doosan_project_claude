@@ -9,6 +9,7 @@ from sklearn.metrics import mean_squared_error
 import re
 import os
 from tqdm import tqdm
+import pickle
 
 # ----- 전역 변수 (데이터셋 선택 옵션) -----
 dataset_options = {
@@ -63,6 +64,18 @@ def load_data(selected_dataset_name):
     except Exception as e:
         st.error(f"데이터 로드 중 오류 발생: {str(e)}")
         st.write(f"시도한 파일 경로: {selected_dataset_name}")
+        return None
+
+def load_index_file(index_filename="phase1_general_api_updated.index"):
+    """미리 계산된 인덱스 파일을 로드하는 함수."""
+    try:
+        st.info(f"인덱스 파일 '{index_filename}'을 로드하는 중...")
+        # FAISS 인덱스 로드
+        faiss_index = faiss.read_index(index_filename)
+        st.success(f"인덱스 파일 로드 완료: {faiss_index.ntotal}개 벡터 포함")
+        return faiss_index
+    except Exception as e:
+        st.error(f"인덱스 파일 로드 중 오류 발생: {str(e)}")
         return None
 
 def generate_with_gpt4(prompt):
@@ -153,11 +166,11 @@ def main():
     )
 
     # ----- 세션 상태 초기화 -----
-    # (index, embeddings, user inputs 등을 보관)
+    # (index, user inputs 등을 보관)
     if "index" not in st.session_state:
         st.session_state.index = None
-    if "embeddings" not in st.session_state:
-        st.session_state.embeddings = None
+    if "retriever_pool_df" not in st.session_state:
+        st.session_state.retriever_pool_df = None
 
     # 메인 타이틀
     st.title("생성형 AI 기반 위험성 평가 시스템")
@@ -204,37 +217,39 @@ def main():
     train_df, test_df = train_test_split(df, test_size=0.1, random_state=42)
     test_df = test_df[['작업활동 및 내용', '유해위험요인 및 환경측면 영향', '빈도', '강도', 'T']]
 
-    # Retriever Pool 구성
-    retriever_pool_df = train_df.copy()
-    retriever_pool_df['content'] = retriever_pool_df.apply(
-        lambda row: ' '.join(row.values.astype(str)), axis=1
-    )
-    texts = retriever_pool_df['content'].tolist()
-
+    # Retriever Pool 구성 (세션 상태에 저장)
+    if st.session_state.retriever_pool_df is None:
+        retriever_pool_df = train_df.copy()
+        retriever_pool_df['content'] = retriever_pool_df.apply(
+            lambda row: ' '.join(row.values.astype(str)), axis=1
+        )
+        st.session_state.retriever_pool_df = retriever_pool_df
+    
     # ----- 탭 구분 -----
-    tabs = st.tabs(["임베딩 사전 계산", "사용자 입력 예측", "샘플 예측"])
+    tabs = st.tabs(["인덱스 불러오기", "사용자 입력 예측", "샘플 예측"])
 
-    # 탭 1) 임베딩 사전 계산
+    # 탭 1) 인덱스 불러오기
     with tabs[0]:
-        st.subheader("임베딩 계산 / 인덱스 구성")
+        st.subheader("미리 계산된 인덱스 불러오기")
 
         if st.session_state.index is not None:
-            st.success("이미 임베딩 계산 및 인덱스 구성이 완료되었습니다!")
+            st.success("이미 인덱스가 로드되었습니다!")
         else:
-            if st.button("임베딩 사전 계산", key="run_embedding"):
-                with st.spinner('임베딩을 생성하는 중...'):
-                    embeddings = embed_texts_with_openai(texts)
-                    if not embeddings:
-                        st.error("임베딩 생성 실패")
-                        return
-                    st.session_state.embeddings = np.array(embeddings, dtype='float32')
-                    dimension = st.session_state.embeddings.shape[1]
-                    faiss_index = faiss.IndexFlatL2(dimension)
-                    faiss_index.add(st.session_state.embeddings)
-                    st.session_state.index = faiss_index
-                st.success("임베딩 생성 및 인덱스 구성 완료!")
+            index_file = st.selectbox(
+                "인덱스 파일 선택", 
+                ["phase1_general_api_updated.index", "phase2_general_api_updated.index"], 
+                index=0
+            )
+            
+            if st.button("인덱스 불러오기", key="load_index"):
+                with st.spinner('인덱스 파일을 불러오는 중...'):
+                    faiss_index = load_index_file(index_file)
+                    if faiss_index is not None:
+                        st.session_state.index = faiss_index
+                    else:
+                        st.error("인덱스 로드 실패")
             else:
-                st.info("아직 인덱스가 만들어지지 않았습니다. [임베딩 사전 계산]을 눌러주세요.")
+                st.info("아직 인덱스가 로드되지 않았습니다. [인덱스 불러오기]를 눌러주세요.")
 
     # ----- 공통 설정 (사이드바 등) -----
     with st.sidebar:
@@ -246,7 +261,7 @@ def main():
         st.subheader("사용자 입력 예측")
 
         if st.session_state.index is None:
-            st.warning("먼저 [임베딩 사전 계산] 탭에서 인덱스를 생성하세요.")
+            st.warning("먼저 [인덱스 불러오기] 탭에서 인덱스를 불러오세요.")
         else:
             with st.form("user_input_form"):
                 user_work = st.text_input("작업활동 (사용자 입력):", key="form_user_work")
@@ -265,7 +280,7 @@ def main():
                     
                     # 유사 문서 검색
                     distances, indices = st.session_state.index.search(query_embedding_array, k_similar)
-                    retrieved_docs = retriever_pool_df.iloc[indices[0]]
+                    retrieved_docs = st.session_state.retriever_pool_df.iloc[indices[0]]
 
                     # GPT 프롬프트 생성 & 호출
                     prompt = construct_prompt(retrieved_docs, query_text)
@@ -284,7 +299,7 @@ def main():
         st.subheader("샘플 예측 (상위 3개만 표시)")
 
         if st.session_state.index is None:
-            st.warning("먼저 [임베딩 사전 계산] 탭에서 인덱스를 생성하세요.")
+            st.warning("먼저 [인덱스 불러오기] 탭에서 인덱스를 불러오세요.")
         else:
             sample_df = test_df.iloc[:3].copy().reset_index(drop=True)
 
@@ -302,7 +317,7 @@ def main():
 
                 # FAISS 검색
                 distances, indices = st.session_state.index.search(query_embedding_array, k_similar)
-                retrieved_docs = retriever_pool_df.iloc[indices[0]]
+                retrieved_docs = st.session_state.retriever_pool_df.iloc[indices[0]]
 
                 # GPT 호출
                 prompt = construct_prompt(retrieved_docs, query_text)
