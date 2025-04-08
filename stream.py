@@ -133,13 +133,8 @@ def generate_with_gpt4(prompt):
         st.error(f"GPT-4 API 호출 중 오류 발생: {str(e)}")
         return None
 
-# embed_texts_with_openai 함수 수정
-def embed_texts_with_openai(texts, model=None):
+def embed_texts_with_openai(texts, model="text-embedding-3-small"):
     """OpenAI 임베딩 API로 텍스트 리스트를 임베딩."""
-    # 세션 상태에서 모델 가져오기 (없으면 기본값)
-    if model is None:
-        model = st.session_state.get('embedding_model', "text-embedding-3-large")
-        
     st.write(f"사용 중인 임베딩 모델: {model}")
     
     embeddings = []
@@ -151,17 +146,20 @@ def embed_texts_with_openai(texts, model=None):
             text = text.replace("\n", " ")
             response = openai.Embedding.create(model=model, input=[text])
             embedding = response["data"][0]["embedding"]
-            embeddings.append(embedding)
             
-            # 첫 번째 임베딩 후 차원 확인 및 출력
+            # 첫 번째 임베딩의 차원 정보 출력
             if idx == 0:
                 st.write(f"생성된 임베딩 차원: {len(embedding)}")
                 if hasattr(st.session_state, 'index') and st.session_state.index is not None:
                     if len(embedding) != st.session_state.index.d:
-                        st.error(f"임베딩 차원({len(embedding)})이 인덱스 차원({st.session_state.index.d})과 일치하지 않습니다!")
+                        st.warning(f"임베딩 차원({len(embedding)})이 인덱스 차원({st.session_state.index.d})과 일치하지 않습니다!")
+                    else:
+                        st.success(f"임베딩 차원과 인덱스 차원이 일치합니다: {len(embedding)}")
+            
+            embeddings.append(embedding)
         except Exception as e:
             st.error(f"텍스트 임베딩 중 오류 발생: {str(e)}")
-            embeddings.append([0]*st.session_state.index.d)  # 인덱스 차원에 맞게 조정
+            embeddings.append([0] * 1536)  # 기본 차원으로 설정
         
         progress_bar.progress((idx + 1) / total)
     
@@ -236,8 +234,6 @@ def main():
         st.session_state.retriever_pool_df = None
     if "index_loaded" not in st.session_state:
         st.session_state.index_loaded = False
-    if "embedding_model" not in st.session_state:
-        st.session_state.embedding_model = "text-embedding-3-large"
 
     # 메인 타이틀
     st.title("생성형 AI 기반 위험성 평가 시스템")
@@ -316,16 +312,6 @@ def main():
                     st.session_state.index = faiss_index
                     st.session_state.index_loaded = True
                     st.success(f"인덱스 파일이 자동으로 로드되었습니다! 차원: {faiss_index.d}")
-                    # 임베딩 모델을 인덱스 차원에 맞게 설정
-                    if faiss_index.d == 1536:
-                        st.session_state.embedding_model = "text-embedding-3-large"
-                    elif faiss_index.d == 768:
-                        st.session_state.embedding_model = "text-embedding-ada-002"
-                    elif faiss_index.d == 1024:
-                        st.session_state.embedding_model = "text-embedding-3-small"
-                    else:
-                        st.warning(f"인덱스 차원({faiss_index.d})에 맞는 임베딩 모델을 식별할 수 없습니다. 기본값 사용.")
-                        st.session_state.embedding_model = "text-embedding-3-large"
                 else:
                     st.error("인덱스 자동 로드 실패")
                     return
@@ -362,7 +348,7 @@ def main():
                     try:
                         # 쿼리 임베딩
                         with st.spinner('쿼리 임베딩 생성 중...'):
-                            query_embedding = embed_texts_with_openai([query_text], model=st.session_state.embedding_model)[0]
+                            query_embedding = embed_texts_with_openai([query_text], model="text-embedding-3-small")[0]
                             query_embedding_array = np.array([query_embedding], dtype='float32')
                         
                         # 유사 문서 검색
@@ -396,6 +382,7 @@ def main():
                             st.write(f"GPT 예측(원문): {generated_output}")
                     except Exception as e:
                         st.error(f"예측 과정에서 오류 발생: {str(e)}")
+                        st.error(traceback.format_exc())
 
     # 탭 2) 샘플 예측
     with tabs[1]:
@@ -408,7 +395,6 @@ def main():
             st.write(f"인덱스 벡터 수: {st.session_state.index.ntotal}")
             st.write(f"인덱스 차원: {st.session_state.index.d}")
             st.write(f"데이터프레임 행 수: {len(st.session_state.retriever_pool_df)}")
-            st.write(f"임베딩 모델: {st.session_state.embedding_model}")
             st.write(f"test_df 행 수: {len(test_df)}")
             
             try:
@@ -427,7 +413,7 @@ def main():
                     try:
                         # 쿼리 임베딩
                         st.write("임베딩 생성 중...")
-                        query_embedding = embed_texts_with_openai([query_text], model=st.session_state.embedding_model)[0]
+                        query_embedding = embed_texts_with_openai([query_text], model="text-embedding-3-small")[0]
                         query_embedding_array = np.array([query_embedding], dtype='float32')
                         st.write(f"임베딩 생성 완료 (차원: {len(query_embedding)})")
 
@@ -479,8 +465,7 @@ def main():
                     
                     except Exception as e:
                         st.error(f"샘플 {idx+1} 처리 중 오류 발생: {str(e)}")
-                        import traceback
-                        st.error(f"스택 트레이스: {traceback.format_exc()}")
+                        st.error(traceback.format_exc())
                     
                     st.markdown("---")
 
@@ -489,8 +474,7 @@ def main():
             
             except Exception as e:
                 st.error(f"샘플 예측 과정에서 오류 발생: {str(e)}")
-                import traceback
-                st.error(f"스택 트레이스: {traceback.format_exc()}")
+                st.error(traceback.format_exc())
 
 if __name__ == "__main__":
     try:
