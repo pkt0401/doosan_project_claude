@@ -62,33 +62,6 @@ st.markdown("""
         font-size: 0.8rem;
         margin-right: 10px;
     }
-    .process-container {
-        display: flex;
-        flex-direction: row;
-        justify-content: space-between;
-        align-items: center;
-        flex-wrap: wrap;
-        padding: 20px;
-        background-color: #f9f9f9;
-        border-radius: 10px;
-        margin: 20px 0;
-    }
-    .process-step {
-        text-align: center;
-        flex: 1;
-        padding: 10px 5px;
-        position: relative;
-        min-width: 120px;
-    }
-    .process-arrow {
-        color: #4CAF50;
-        font-size: 24px;
-        margin: 0 5px;
-    }
-    .step-content {
-        margin-top: 5px;
-        font-weight: normal;
-    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -449,33 +422,14 @@ with tabs[0]:
         """, unsafe_allow_html=True)
     
     with col2:
-        # AI 위험성평가 프로세스 다이어그램 - 가로 배치로 수정
+        # AI 위험성평가 프로세스 다이어그램
         st.markdown('<div style="text-align: center; margin-bottom: 10px;"><b>AI 위험성평가 프로세스</b></div>', unsafe_allow_html=True)
         
-        # 프로세스 단계 및 해당 Phase 지정
         steps = ["작업내용 입력", "AI 위험분석", "유해요인 식별", "위험등급 산정", "개선대책 자동생성", "안전조치 적용"]
-        phases = ["Phase 1", "Phase 1", "Phase 1", "Phase 1", "Phase 2", "Phase 2"]
         
-        # 가로 프로세스 컨테이너 시작
-        st.markdown('<div class="process-container">', unsafe_allow_html=True)
-        
-        # 각 단계를 가로로 배치
-        for i, (step, phase) in enumerate(zip(steps, phases)):
-            # 프로세스 단계 표시
-            st.markdown(
-                f'<div class="process-step">'
-                f'<div><b>{i+1}. {step}</b></div>'
-                f'<div><span class="phase-badge">{phase}</span></div>'
-                f'</div>',
-                unsafe_allow_html=True
-            )
-            
-            # 마지막 단계가 아니면 화살표 추가
-            if i < len(steps) - 1:
-                st.markdown('<div class="process-arrow">→</div>', unsafe_allow_html=True)
-                
-        # 컨테이너 종료
-        st.markdown('</div>', unsafe_allow_html=True)
+        for i, step in enumerate(steps):
+            phase_badge = '<span class="phase-badge">Phase 1</span>' if i < 4 else '<span class="phase-badge">Phase 2</span>'
+            st.markdown(f"**{i+1}. {step}** {phase_badge}" + (" → " if i < len(steps)-1 else ""), unsafe_allow_html=True)
     
     # 시스템 특징
     st.markdown('<div class="sub-header">시스템 특징 및 구성요소</div>', unsafe_allow_html=True)
