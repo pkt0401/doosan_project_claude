@@ -5,6 +5,7 @@ import faiss
 import openai
 import re
 import os
+from PIL import Image
 from sklearn.model_selection import train_test_split
 
 # 페이지 설정
@@ -76,7 +77,7 @@ if "retriever_pool_df" not in st.session_state:
     st.session_state.retriever_pool_df = None
 
 # 탭 설정
-tabs = st.tabs(["시스템 개요", "위험성 평가 (Phase 1)", "개선대책 생성 (Phase 2)", "데이터 탐색"])
+tabs = st.tabs(["시스템 개요", "위험성 평가 (Phase 1)", "개선대책 생성 (Phase 2)"])
 
 # ------------------ 유틸리티 함수 ------------------
 
@@ -730,9 +731,7 @@ with tabs[2]:
                     st.error("개선대책 생성 결과를 파싱할 수 없습니다.")
                     st.write("GPT 원문 응답:", generated_output)
 
-from PIL import Image
-import os
-
+# ----- 푸터 섹션: 로고 이미지 표시 -----
 st.markdown('<hr style="margin-top: 50px;">', unsafe_allow_html=True)
 st.markdown('<div style="display: flex; justify-content: space-between; align-items: center;">', unsafe_allow_html=True)
 
