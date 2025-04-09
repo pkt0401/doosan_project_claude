@@ -10,7 +10,7 @@ from sklearn.model_selection import train_test_split
 
 # 페이지 설정
 st.set_page_config(
-    page_title="LLM 활용 위험성평가 자동 생성 및 사고 예측",
+    page_title="AI 위험성평가 자동 생성 및 사고 예측",
     page_icon="🛠️",
     layout="wide"
 )
