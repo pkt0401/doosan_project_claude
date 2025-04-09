@@ -5,7 +5,6 @@ import faiss
 import openai
 import re
 import os
-from PIL import Image
 from sklearn.model_selection import train_test_split
 
 # 페이지 설정
@@ -62,6 +61,41 @@ st.markdown("""
         font-size: 0.8rem;
         margin-right: 10px;
     }
+    .process-step {
+        display: flex;
+        align-items: center;
+        margin-bottom: 8px;
+    }
+    .process-arrow {
+        color: #4CAF50;
+        font-size: 20px;
+        margin: 0 10px;
+    }
+    .process-container {
+        display: flex;
+        flex-direction: column;
+        padding: 20px;
+        background-color: #f9f9f9;
+        border-radius: 10px;
+        margin: 20px 0;
+    }
+    .step-container {
+        display: flex;
+        align-items: center;
+        margin-bottom: 10px;
+    }
+    .step-number {
+        margin-right: 10px;
+        font-weight: bold;
+    }
+    .step-content {
+        flex-grow: 1;
+    }
+    .arrow-down {
+        text-align: center;
+        margin: 5px 0;
+        color: #4CAF50;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -76,7 +110,7 @@ if "embeddings" not in st.session_state:
 if "retriever_pool_df" not in st.session_state:
     st.session_state.retriever_pool_df = None
 
-# 탭 설정
+# 탭 설정 - 데이터 탐색 탭 제거
 tabs = st.tabs(["시스템 개요", "위험성 평가 (Phase 1)", "개선대책 생성 (Phase 2)"])
 
 # ------------------ 유틸리티 함수 ------------------
@@ -415,21 +449,37 @@ with tabs[0]:
         1. <span class="highlight">작업 내용 입력 시 생성형 AI를 통한 '유해위험요인' 및 '위험 등급' 자동 생성</span> <span class="phase-badge">Phase 1</span>
         2. <span class="highlight">위험도 감소를 위한 개선대책 자동 생성 및 감소율 예측</span> <span class="phase-badge">Phase 2</span>
         3. AI는 건설현장의 기존 위험성평가를 공정별로 구분하고, 해당 유해위험요인을 학습
-        4. 자동 생성 기술 개발 완료 후 위험도 기반 사고위험성 분석 및 개선대책 생성
+        4. 자동 생성 기술 개발 완료 후 위험도 기반 사고위험성과 이미지 분석을 통한 사고예측 (계획)
         
         이 시스템은 PIMS 및 안전지킴이 등 EHS 플랫폼에 AI 기술 탑재를 통해 통합 사고 예측 프로그램으로 발전 예정입니다.
         </div>
         """, unsafe_allow_html=True)
     
     with col2:
-        # AI 위험성평가 프로세스 다이어그램
+        # AI 위험성평가 프로세스 다이어그램 - 수정된 버전
         st.markdown('<div style="text-align: center; margin-bottom: 10px;"><b>AI 위험성평가 프로세스</b></div>', unsafe_allow_html=True)
         
+        # 프로세스 단계 및 해당 Phase 지정
         steps = ["작업내용 입력", "AI 위험분석", "유해요인 식별", "위험등급 산정", "개선대책 자동생성", "안전조치 적용"]
+        phases = ["Phase 1", "Phase 1", "Phase 1", "Phase 1", "Phase 2", "Phase 2"]
         
-        for i, step in enumerate(steps):
-            phase_badge = '<span class="phase-badge">Phase 1</span>' if i < 4 else '<span class="phase-badge">Phase 2</span>'
-            st.markdown(f"**{i+1}. {step}** {phase_badge}" + (" → " if i < len(steps)-1 else ""), unsafe_allow_html=True)
+        # 프로세스 흐름을 수직 방향으로 표현
+        st.markdown('<div class="process-container">', unsafe_allow_html=True)
+        
+        for i, (step, phase) in enumerate(zip(steps, phases)):
+            st.markdown(
+                f'<div class="step-container">'
+                f'<div class="step-number">{i+1}.</div>'
+                f'<div class="step-content">{step} <span class="phase-badge">{phase}</span></div>'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+            
+            # 마지막 단계가 아니면 화살표 추가
+            if i < len(steps) - 1:
+                st.markdown('<div class="arrow-down">↓</div>', unsafe_allow_html=True)
+                
+        st.markdown('</div>', unsafe_allow_html=True)
     
     # 시스템 특징
     st.markdown('<div class="sub-header">시스템 특징 및 구성요소</div>', unsafe_allow_html=True)
@@ -731,24 +781,10 @@ with tabs[2]:
                     st.error("개선대책 생성 결과를 파싱할 수 없습니다.")
                     st.write("GPT 원문 응답:", generated_output)
 
-# ----- 푸터 섹션: 로고 이미지 표시 -----
-st.markdown('<hr style="margin-top: 50px;">', unsafe_allow_html=True)
-st.markdown('<div style="display: flex; justify-content: space-between; align-items: center;">', unsafe_allow_html=True)
-
-col1, col2 = st.columns(2)
-
-with col1:
-    if os.path.exists("cau.png"):
-        cau_logo = Image.open("cau.png")
-        st.image(cau_logo, width=150)
-    else:
-        st.warning("cau.png 파일을 찾을 수 없습니다.")
-
-with col2:
-    if os.path.exists("doosan.png"):
-        doosan_logo = Image.open("doosan.png")
-        st.image(doosan_logo, width=180)
-    else:
-        st.warning("doosan.png 파일을 찾을 수 없습니다.")
-
-st.markdown('</div>', unsafe_allow_html=True)
+# 푸터
+st.markdown("""
+<div style="text-align: center; margin-top: 30px; padding: 10px; background-color: #f0f2f6; border-radius: 10px;">
+    <p>© 2023-2025 두산건설 LLM 활용 위험성평가 자동 생성 시스템</p>
+    <p style="font-size: 0.8rem;">최신 업데이트: 2025년 4월 8일</p>
+</div>
+""", unsafe_allow_html=True)
