@@ -66,7 +66,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # 헤더 표시
-st.markdown('<div class="main-header">LLM 활용 위험성평가 자동 생성 및 사고 예측</div>', unsafe_allow_html=True)
+st.markdown('<div class="main-header">AI 활용 위험성평가 자동 생성 및 사고 예측</div>', unsafe_allow_html=True)
 
 # 세션 상태 초기화
 if "index" not in st.session_state:
