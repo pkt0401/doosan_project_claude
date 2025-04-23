@@ -62,6 +62,13 @@ st.markdown("""
         font-size: 0.8rem;
         margin-right: 10px;
     }
+    .similar-case {
+        background-color: #f1f8e9;
+        border-radius: 8px;
+        padding: 12px;
+        margin-bottom: 8px;
+        border-left: 4px solid #689f38;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -191,15 +198,38 @@ def generate_with_gpt(prompt, api_key=None, model="gpt-4o"):
         st.error(f"GPT API 호출 중 오류 발생: {str(e)}")
         return None
 
-# ----- Phase 1: 위험성 평가 관련 함수 -----
+# ----- Phase 1: 유해위험요인 예측 관련 함수 -----
 
-# 검색된 문서로 GPT 프롬프트 생성 (Phase 1)
-def construct_prompt_phase1(retrieved_docs, query_text):
-    """검색된 문서들로부터 예시를 구성해 GPT 프롬프트 생성."""
+# 검색된 문서로 GPT 프롬프트 생성 (Phase 1 - 유해위험요인 예측)
+def construct_prompt_phase1_hazard(retrieved_docs, activity_text):
+    """작업활동으로부터 유해위험요인을 예측하는 프롬프트 생성."""
     retrieved_examples = []
     for _, doc in retrieved_docs.iterrows():
         try:
-            example_input = f"{doc['작업활동 및 내용']} {doc['유해위험요인 및 환경측면 영향']}"
+            activity = doc['작업활동 및 내용']
+            hazard = doc['유해위험요인 및 환경측면 영향']
+            retrieved_examples.append((activity, hazard))
+        except:
+            continue
+    
+    prompt = "다음은 건설 현장의 작업활동과 그에 따른 유해위험요인의 예시입니다:\n\n"
+    for i, (activity, hazard) in enumerate(retrieved_examples, 1):
+        prompt += f"예시 {i}:\n작업활동: {activity}\n유해위험요인: {hazard}\n\n"
+    
+    prompt += (
+        f"이제 다음 작업활동에 대한 유해위험요인을 예측해주세요:\n"
+        f"작업활동: {activity_text}\n"
+        f"유해위험요인: "
+    )
+    return prompt
+
+# 빈도와 강도 예측을 위한 프롬프트 생성 (Phase 1)
+def construct_prompt_phase1_risk(retrieved_docs, activity_text, hazard_text):
+    """작업활동과 유해위험요인을 바탕으로 빈도와 강도를 예측하는 프롬프트 생성."""
+    retrieved_examples = []
+    for _, doc in retrieved_docs.iterrows():
+        try:
+            example_input = f"{doc['작업활동 및 내용']} - {doc['유해위험요인 및 환경측면 영향']}"
             frequency = int(doc['빈도'])
             intensity = int(doc['강도'])
             T_value = frequency * intensity
@@ -213,7 +243,7 @@ def construct_prompt_phase1(retrieved_docs, query_text):
         prompt += f"예시 {i}:\n입력: {example_input}\n출력: {example_output}\n\n"
     
     prompt += (
-        f"입력: {query_text}\n"
+        f"입력: {activity_text} - {hazard_text}\n"
         "위 입력을 바탕으로 빈도와 강도를 예측하세요. "
         "빈도는 1에서 5 사이의 정수입니다. "
         "강도는 1에서 5 사이의 정수입니다. "
@@ -412,7 +442,7 @@ with tabs[0]:
         <div class="info-text">
         LLM(Large Language Model)을 활용한 위험성평가 자동화 시스템은 건설 현장의 안전 관리를 혁신적으로 개선합니다:
         
-        1. <span class="highlight">작업 내용 입력 시 생성형 AI를 통한 '유해위험요인' 및 '위험 등급' 자동 생성</span> <span class="phase-badge">Phase 1</span>
+        1. <span class="highlight">작업 내용 입력 시 생성형 AI를 통한 '유해위험요인' 자동 예측 및 위험 등급 산정</span> <span class="phase-badge">Phase 1</span>
         2. <span class="highlight">위험도 감소를 위한 개선대책 자동 생성 및 감소율 예측</span> <span class="phase-badge">Phase 2</span>
         3. AI는 건설현장의 기존 위험성평가를 공정별로 구분하고, 해당 유해위험요인을 학습
         4. 자동 생성 기술 개발 완료 후 위험도 기반 사고위험성 분석 및 개선대책 생성
@@ -425,7 +455,7 @@ with tabs[0]:
         # AI 위험성평가 프로세스 다이어그램
         st.markdown('<div style="text-align: center; margin-bottom: 10px;"><b>AI 위험성평가 프로세스</b></div>', unsafe_allow_html=True)
         
-        steps = ["작업내용 입력", "AI 위험분석", "유해요인 식별", "위험등급 산정", "개선대책 자동생성", "안전조치 적용"]
+        steps = ["작업내용 입력", "AI 위험분석", "유해요인 예측", "위험등급 산정", "개선대책 자동생성", "안전조치 적용"]
         
         for i, step in enumerate(steps):
             phase_badge = '<span class="phase-badge">Phase 1</span>' if i < 4 else '<span class="phase-badge">Phase 2</span>'
@@ -440,10 +470,11 @@ with tabs[0]:
         st.markdown("""
         #### Phase 1: 위험성 평가 자동화
         - 공정별 작업활동에 따른 위험성평가 데이터 학습
-        - 작업활동 입력 시 유해위험요인 및 위험도 자동 예측
+        - 작업활동 입력 시 유해위험요인 자동 예측
+        - 유사 위험요인 사례 검색 및 표시
         - 대규모 언어 모델(LLM) 기반 위험도(빈도, 강도, T) 측정
         - Excel 기반 공정별 위험성평가 데이터 자동 분석
-        - 유사 사례 검색 및 위험등급(A-E) 자동 산정
+        - 위험등급(A-E) 자동 산정
         """)
     
     with col2:
@@ -514,25 +545,22 @@ with tabs[1]:
                     st.session_state.test_df = test_df
     
     # 사용자 입력 예측 섹션
-    st.markdown("### 2. 위험성 평가 예측")
+    st.markdown("### 2. 유해위험요인 예측")
     
     if st.session_state.index is None:
         st.warning("먼저 [데이터 로드 및 인덱스 구성] 버튼을 클릭하세요.")
     else:
         with st.form("user_input_form"):
             user_work = st.text_input("작업활동:", key="form_user_work")
-            user_risk = st.text_input("유해위험요인:", key="form_user_risk")
-            submitted = st.form_submit_button("위험성 평가 예측하기")
+            submitted = st.form_submit_button("유해위험요인 예측하기")
             
         if submitted:
-            if not user_work or not user_risk:
-                st.warning("작업활동과 유해위험요인을 모두 입력하세요.")
+            if not user_work:
+                st.warning("작업활동을 입력하세요.")
             else:
-                query_text = f"{user_work} {user_risk}"
-                
-                with st.spinner("위험성을 평가하는 중..."):
+                with st.spinner("유해위험요인을 예측하는 중..."):
                     # 쿼리 임베딩
-                    query_embedding = embed_texts_with_openai([query_text], api_key=api_key)[0]
+                    query_embedding = embed_texts_with_openai([user_work], api_key=api_key)[0]
                     query_embedding_array = np.array([query_embedding], dtype='float32')
                     
                     # 유사 문서 검색
@@ -540,15 +568,32 @@ with tabs[1]:
                     distances, indices = st.session_state.index.search(query_embedding_array, k_similar)
                     retrieved_docs = st.session_state.retriever_pool_df.iloc[indices[0]]
                     
-                    # GPT 프롬프트 생성 & 호출
-                    prompt = construct_prompt_phase1(retrieved_docs, query_text)
-                    generated_output = generate_with_gpt(prompt, api_key=api_key)
+                    # 유사한 사례 표시
+                    st.markdown("#### 유사한 사례")
+                    for i, (_, doc) in enumerate(retrieved_docs.iterrows(), 1):
+                        st.markdown(f"""
+                        <div class="similar-case">
+                            <strong>사례 {i}</strong><br>
+                            <strong>작업활동:</strong> {doc['작업활동 및 내용']}<br>
+                            <strong>유해위험요인:</strong> {doc['유해위험요인 및 환경측면 영향']}<br>
+                            <strong>위험도:</strong> 빈도 {doc['빈도']}, 강도 {doc['강도']}, T값 {doc['T']} (등급 {doc['등급']})
+                        </div>
+                        """, unsafe_allow_html=True)
+                    
+                    # GPT 프롬프트 생성 & 호출 (유해위험요인 예측)
+                    hazard_prompt = construct_prompt_phase1_hazard(retrieved_docs, user_work)
+                    hazard_prediction = generate_with_gpt(hazard_prompt, api_key=api_key)
+                    
+                    # 빈도와 강도 예측을 위한 프롬프트 생성 & 호출
+                    risk_prompt = construct_prompt_phase1_risk(retrieved_docs, user_work, hazard_prediction)
+                    risk_prediction = generate_with_gpt(risk_prompt, api_key=api_key)
                     
                     # 결과 표시
-                    st.markdown(f"**사용자 입력 작업활동:** {user_work}")
-                    st.markdown(f"**사용자 입력 유해위험요인:** {user_risk}")
+                    st.markdown("#### 예측 결과")
+                    st.markdown(f"**작업활동:** {user_work}")
+                    st.markdown(f"**예측된 유해위험요인:** {hazard_prediction}")
                     
-                    parse_result = parse_gpt_output_phase1(generated_output)
+                    parse_result = parse_gpt_output_phase1(risk_prediction)
                     if parse_result is not None:
                         f_val, i_val, t_val = parse_result
                         grade = determine_grade(t_val)
@@ -560,14 +605,13 @@ with tabs[1]:
                         })
                         
                         st.markdown('<div class="result-box">', unsafe_allow_html=True)
-                        st.markdown("#### 위험성 평가 결과")
                         st.table(result_df)
                         st.markdown('</div>', unsafe_allow_html=True)
                         
                         # 세션 상태에 결과 저장 (Phase 2에서 사용)
                         st.session_state.last_assessment = {
                             'activity': user_work,
-                            'hazard': user_risk,
+                            'hazard': hazard_prediction,
                             'frequency': f_val,
                             'intensity': i_val,
                             'T': t_val,
@@ -575,9 +619,10 @@ with tabs[1]:
                         }
                     else:
                         st.error("위험성 평가 결과를 파싱할 수 없습니다.")
-                        st.write(f"GPT 원문 응답: {generated_output}")
+                        st.write(f"GPT 원문 응답: {risk_prediction}")
 
 # ----- Phase 2: 개선대책 생성 탭 -----
+
 with tabs[2]:
     st.markdown('<div class="sub-header">개선대책 자동 생성 (Phase 2)</div>', unsafe_allow_html=True)
     
@@ -660,6 +705,18 @@ with tabs[2]:
                     query_embedding_array = np.array([query_embedding], dtype='float32')
                     distances, indices = st.session_state.index.search(query_embedding_array, k_similar)
                     retrieved_docs = retriever_pool_df.iloc[indices[0]]
+                    
+                    # 유사 사례 표시
+                    st.markdown("#### 유사한 사례")
+                    for i, (_, doc) in enumerate(retrieved_docs.iterrows(), 1):
+                        st.markdown(f"""
+                        <div class="similar-case">
+                            <strong>사례 {i}</strong><br>
+                            <strong>작업활동:</strong> {doc['작업활동 및 내용']}<br>
+                            <strong>유해위험요인:</strong> {doc['유해위험요인 및 환경측면 영향']}<br>
+                            <strong>위험도:</strong> 빈도 {doc['빈도']}, 강도 {doc['강도']}, T값 {doc['T']} (등급 {doc['등급']})
+                        </div>
+                        """, unsafe_allow_html=True)
                 
                 # 개선대책 생성 프롬프트 구성
                 prompt = construct_prompt_phase2(
