@@ -255,7 +255,21 @@ if st.button("위험성 평가 + 개선대책 생성"):
             st.markdown("<div class='sub-header'>유사 사례</div>", unsafe_allow_html=True)
             for i, row in examples.iterrows():
                 st.markdown(
-                    f"<div class='similar-case'><b>#{i}</b> 작업활동: {row['작업활동 및 내용']}<br>유해위험요인: {row['유해위험요인 및 환경측면 영향']}<br>빈도: {row['빈도']} 강도: {row['강도']} T: {row['T']} 등급: {row['등급']}</div>",
+                    f"""
+                    <div class='similar-case'><b>#{i}</b><br>
+                    작업활동: {row['작업활동 및 내용']}<br>
+                    유해위험요인: {row['유해위험요인 및 환경측면 영향']}<br>
+                    빈도: {row['빈도']} &nbsp;&nbsp;|&nbsp;&nbsp;
+                    강도: {row['강도']} &nbsp;&nbsp;|&nbsp;&nbsp;
+                    T: {row['T']} &nbsp;&nbsp;|&nbsp;&nbsp;
+                    등급: {row['등급']}<br><br>
+                    <b>개선대책</b>: {row['개선대책']}<br>
+                    개선 후&nbsp;빈도: {row['개선 후 빈도']} &nbsp;&nbsp;|&nbsp;&nbsp;
+                    개선 후&nbsp;강도: {row['개선 후 강도']} &nbsp;&nbsp;|&nbsp;&nbsp;
+                    개선 후&nbsp;T: {row['개선 후 T']}<br>
+                    T&nbsp;감소율: {row['T 감소율']}
+                    </div>
+                    """,
                     unsafe_allow_html=True,
                 )
 
