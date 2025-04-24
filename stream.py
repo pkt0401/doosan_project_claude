@@ -7,6 +7,15 @@ import os
 # Set page configuration for wide layout and title
 st.set_page_config(page_title="Artificial Intelligence Risk Assessment", layout="wide")
 
+
+st.sidebar.markdown("## 🔑 OpenAI API Key")
+user_api_key = st.sidebar.text_input("Enter your OpenAI API Key", type="password")
+
+# OpenAI 호출 전 API 키 검증
+if not user_api_key:
+    st.warning("⚠️ Please input your OpenAI API Key in the sidebar.")
+    st.stop()
+
 # Mapping for language selection (display text to code)
 lang_map = {
     "🇰🇷 Korean": "ko",
@@ -149,6 +158,7 @@ if submitted:
         # Call OpenAI API for hazard identification
         response1 = openai.ChatCompletion.create(
             model="gpt-4o",  # or "gpt-4" if available
+            api_key=user_api_key,
             messages=[
                 {"role": "system", "content": system_msg},
                 {"role": "user", "content": user_msg}
