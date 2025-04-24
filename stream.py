@@ -16,6 +16,8 @@ import re
 import os
 import io
 from datetime import datetime
+# openpyxl 엔진 사용을 위해 명시적으로 import
+import openpyxl
 from PIL import Image
 from sklearn.model_selection import train_test_split
 
@@ -118,20 +120,74 @@ def _prompt_risk(docs, activity, hazard):
     return f"""{examples_text}입력: {activity} - {hazard}\n빈도와 강도를 1~5 정수로 예측하고 JSON으로 출력: {{\"빈도\": n, \"강도\": n, \"T\": n}}\n출력:"""
 
 def _prompt_improve(docs, activity, hazard, f, i, t):
-    # Include improvement plan in examples
-    examples="""
+    # 유사 사례 예시 추가
+    examples = ""
+    for idx, (_, r) in enumerate(docs.iterrows()):
+        work = r.get('작업활동 및 내용', '작업 설명 없음')
+        hazard_desc = r.get('유해위험요인 및 환경측면 영향', '위험 요인 없음')
+        examples += f"유사사례 {idx+1}:\n작업활동: {work}\n유해위험요인: {hazard_desc}\n\n"
+    
+    improve_example = """
 Example:
 Input (Activity): Excavation
 Input (Hazard): Wall collapse
 Input (Original F/I/T): 3/4/12
 Output (Improvement) JSON:
-{"""+"\n  \"개선대책\": \"1) 토양 경사 준수 2) 지보공 설치 3) 점검\",\n  \"개선 후 빈도\": 1,\n  \"개선 후 강도\": 2,\n  \"개선 후 T\": 2,\n  \"T 감소율\": 83.33\n}"""
-    return f"""{examples}\n새로운 입력:\nInput (Activity): {activity}\nInput (Hazard): {hazard}\nInput (Original F/I/T): {f}/{i}/{t}\nJSON key: 개선대책, 개선 후 빈도, 개선 후 강도, 개선 후 T, T 감소율\n번호 매긴 개선대책을 한국어로 3개 이상 포함하고 올바른 JSON만 출력하세요.\n출력:"""
+{
+  "개선대책": "1) 토양 경사 준수 2) 지보공 설치 3) 점검",
+  "개선 후 빈도": 1,
+  "개선 후 강도": 2,
+  "개선 후 T": 2,
+  "T 감소율": 83.33
+}"""
+
+    prompt = f"""다음은 건설현장 작업활동의 유사사례입니다:
+
+{examples}
+
+{improve_example}
+
+새로운 입력:
+Input (Activity): {activity}
+Input (Hazard): {hazard}
+Input (Original F/I/T): {f}/{i}/{t}
+
+위 정보를 바탕으로 위험성을 낮추기 위한 개선대책을 3개 이상 제시하고, 개선 후 빈도와 강도, T값을 예측하세요.
+번호가 매겨진 개선대책을 한국어로 제공하고 아래 형식의 JSON으로 출력하세요:
+
+{{
+  "개선대책": "1) [첫번째 대책] 2) [두번째 대책] 3) [세번째 대책]",
+  "개선 후 빈도": [1~5 사이 정수],
+  "개선 후 강도": [1~5 사이 정수],
+  "개선 후 T": [빈도×강도],
+  "T 감소율": [((원래T - 개선후T) / 원래T) × 100]
+}}
+
+출력:"""
+    return prompt
 
 def _ask_gpt(prompt, api_key, model="gpt-4o"):
-    openai.api_key=api_key
-    res=openai.ChatCompletion.create(model=model,temperature=0, messages=[{"role":"user","content":prompt}])
-    return res['choices'][0]['message']['content']
+    """GPT 모델로 질문하고 응답 받기"""
+    try:
+        openai.api_key = api_key
+        res = openai.ChatCompletion.create(
+            model=model,
+            temperature=0.0,
+            messages=[{"role": "user", "content": prompt}],
+            timeout=60  # 타임아웃 설정
+        )
+        return res['choices'][0]['message']['content']
+    except Exception as e:
+        st.error(f"AI 모델 호출 오류: {e}")
+        # 오류 발생 시 기본 응답 반환
+        if "hazard" in prompt.lower():
+            return "작업 중 추락 위험"
+        elif "빈도" in prompt.lower() and "강도" in prompt.lower():
+            return '{"빈도": 3, "강도": 3, "T": 9}'
+        elif "개선대책" in prompt.lower():
+            return '{"개선대책": "1) 안전교육 실시 2) 안전장비 착용 의무화 3) 작업 전 점검 실시", "개선 후 빈도": 2, "개선 후 강도": 2, "개선 후 T": 4, "T 감소율": 55.56}'
+        else:
+            return "AI 모델 응답을 가져오지 못했습니다."
 
 def _parse_risk(txt):
     m=re.search(r'\{"빈도"\s*:\s*(\d),\s*"강도"\s*:\s*(\d),\s*"T"\s*:\s*(\d+)\}',txt)
@@ -139,16 +195,70 @@ def _parse_risk(txt):
 
 def _parse_improve(txt):
     try:
-        j=re.search(r'\{.*\}',txt,re.S).group()
-        data=pd.json.loads(j)
+        # JSON 부분 추출
+        json_match = re.search(r'\{.*\}', txt, re.DOTALL)
+        if not json_match:
+            # JSON이 없으면 텍스트에서 개선대책을 찾음
+            plan_match = re.search(r'개선대책[:\s]*(.*?)(?:개선 후|$)', txt, re.DOTALL)
+            plan = plan_match.group(1).strip() if plan_match else "1) 안전 교육 실시 2) 작업 전 점검 3) 안전장비 착용 의무화"
+            
+            # 기본값 설정
+            return {
+                "plan": plan,
+                "f": 1,
+                "i": 1,
+                "t": 1,
+                "rrr": 0
+            }
+        
+        # JSON 파싱
+        json_str = json_match.group(0)
+        data = pd.json.loads(json_str)
+    except Exception as e:
+        st.warning(f"개선대책 파싱 오류: {e}. 기본 개선대책을 사용합니다.")
+        return {
+            "plan": "1) 안전 교육 실시 2) 작업 전 점검 3) 안전장비 착용 의무화",
+            "f": 1,
+            "i": 1, 
+            "t": 1,
+            "rrr": 0
+        }
+    
+    # 기본값 설정
+    plan = data.get("개선대책", "")
+    
+    # 개선대책이 비어있으면 기본값 사용
+    if not plan or len(plan.strip()) < 5:
+        plan = "1) 안전 교육 실시 2) 작업 전 점검 3) 안전장비 착용 의무화"
+    
+    # 숫자형 변환 보장
+    try:
+        f = int(data.get("개선 후 빈도", 1))
     except:
-        data={}
+        f = 1
+        
+    try:
+        i = int(data.get("개선 후 강도", 1))
+    except:
+        i = 1
+        
+    try:
+        t = int(data.get("개선 후 T", f * i))
+    except:
+        t = f * i
+        
+    # T 감소율이 없거나 오류가 있을 경우 직접 계산
+    try:
+        rrr = float(data.get("T 감소율", 0))
+    except:
+        rrr = 0
+    
     return {
-        "plan": data.get("개선대책",""),
-        "f": data.get("개선 후 빈도",1),
-        "i": data.get("개선 후 강도",1),
-        "t": data.get("개선 후 T",1),
-        "rrr": data.get("T 감소율",0),
+        "plan": plan,
+        "f": f,
+        "i": i,
+        "t": t,
+        "rrr": rrr
     }
 
 # Excel 다운로드 기능 추가
@@ -356,13 +466,22 @@ if run:
         imp_parsed = _parse_improve(imp_raw)
         imp_plan = imp_parsed.get("plan","-")
         newF,newI,newT = imp_parsed.get("f",1),imp_parsed.get("i",1),imp_parsed.get("t",1)
-        rrr = imp_parsed.get("rrr", (T-newT)/T*100 if T else 0)
+        
+        # T값이 0이면 오류 방지를 위해 1로 설정 
+        if T <= 0:
+            T = 1
+            
+        # 위험 감소율 계산 (T값이 0인 경우 방지)
+        rrr = imp_parsed.get("rrr", 0)
+        if rrr == 0:  # 감소율이 설정되지 않았다면 직접 계산
+            rrr = ((T - newT) / T) * 100
+            
         # 5) Display Phase‑2 outputs
         st.subheader(txt['improvement_header'])
         st.markdown(f"<div class='box'>{imp_plan}</div>", unsafe_allow_html=True)
         col1,col2 = st.columns(2)
         col1.metric(txt['before'], T)
-        col2.metric(txt['after'], newT, delta=f"{rrr:.1f}%")
+        col2.metric(txt['after'], newT, delta=f"-{rrr:.1f}%" if rrr > 0 else f"{rrr:.1f}%")
         
         # 6) 결과를 Excel로 저장 및 다운로드 제공
         result_df = save_risk_assessment_result(
