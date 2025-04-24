@@ -168,7 +168,7 @@ texts = system_texts[st.session_state.language]
 st.markdown(f'<div class="main-header">{texts["title"]}</div>', unsafe_allow_html=True)
 
 # 탭 설정
-tabs = st.tabs([texts["tab_overview"], texts["tab_phase1"], texts["tab_phase2"]])
+tabs = st.tabs([texts["title"]])
 
 # ------------------ 유틸리티 함수 ------------------
 
