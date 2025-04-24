@@ -8,6 +8,282 @@ import os
 from PIL import Image
 from sklearn.model_selection import train_test_split
 
+# 언어 설정 텍스트 정의
+system_texts = {
+    "Korean": {
+        "title": "Artificial Intelligence Risk Assessment",
+        "tab_overview": "시스템 개요",
+        "tab_phase1": "위험성 평가 (Phase 1)",
+        "tab_phase2": "개선대책 생성 (Phase 2)",
+        "overview_header": "LLM 기반 위험성평가 시스템",
+        "overview_text": """
+        LLM(Large Language Model)을 활용한 위험성평가 자동화 시스템은 건설 현장의 안전 관리를 혁신적으로 개선합니다:
+        
+        1. <span class="highlight">작업 내용 입력 시 생성형 AI를 통한 '유해위험요인' 자동 예측 및 위험 등급 산정</span> <span class="phase-badge">Phase 1</span>
+        2. <span class="highlight">위험도 감소를 위한 개선대책 자동 생성 및 감소율 예측</span> <span class="phase-badge">Phase 2</span>
+        3. AI는 건설현장의 기존 위험성평가를 공정별로 구분하고, 해당 유해위험요인을 학습
+        4. 자동 생성 기술 개발 완료 후 위험도 기반 사고위험성 분석 및 개선대책 생성
+        
+        이 시스템은 PIMS 및 안전지킴이 등 EHS 플랫폼에 AI 기술 탑재를 통해 통합 사고 예측 프로그램으로 발전 예정입니다.
+        """,
+        "process_title": "AI 위험성평가 프로세스",
+        "process_steps": ["작업내용 입력", "AI 위험분석", "유해요인 예측", "위험등급 산정", "개선대책 자동생성", "안전조치 적용"],
+        "features_title": "시스템 특징 및 구성요소",
+        "phase1_features": """
+        #### Phase 1: 위험성 평가 자동화
+        - 공정별 작업활동에 따른 위험성평가 데이터 학습
+        - 작업활동 입력 시 유해위험요인 자동 예측
+        - 유사 위험요인 사례 검색 및 표시
+        - 대규모 언어 모델(LLM) 기반 위험도(빈도, 강도, T) 측정
+        - Excel 기반 공정별 위험성평가 데이터 자동 분석
+        - 위험등급(A-E) 자동 산정
+        """,
+        "phase2_features": """
+        #### Phase 2: 개선대책 자동 생성
+        - 위험요소별 맞춤형 개선대책 자동 생성
+        - 다국어(한/영/중) 개선대책 생성 지원
+        - 개선 전후 위험도(T) 자동 비교 분석
+        - 위험 감소율(RRR) 정량적 산출
+        - 공종/공정별 최적 개선대책 데이터베이스 구축
+        """,
+        "phase1_header": "위험성 평가 자동화 (Phase 1)",
+        "api_key_label": "OpenAI API 키를 입력하세요:",
+        "dataset_label": "데이터셋 선택",
+        "load_data_label": "데이터 로드 및 인덱스 구성",
+        "load_data_btn": "데이터 로드 및 인덱스 구성",
+        "api_key_warning": "계속하려면 OpenAI API 키를 입력하세요.",
+        "data_loading": "데이터를 불러오고 인덱스를 구성하는 중...",
+        "demo_limit_info": "데모 목적으로 {max_texts}개의 텍스트만 임베딩합니다. 실제 환경에서는 전체 데이터를 처리해야 합니다.",
+        "data_load_success": "데이터 로드 및 인덱스 구성 완료! (총 {max_texts}개 항목 처리)",
+        "hazard_prediction_header": "유해위험요인 예측",
+        "load_first_warning": "먼저 [데이터 로드 및 인덱스 구성] 버튼을 클릭하세요.",
+        "activity_label": "작업활동:",
+        "predict_hazard_btn": "유해위험요인 예측하기",
+        "activity_warning": "작업활동을 입력하세요.",
+        "predicting_hazard": "유해위험요인을 예측하는 중...",
+        "similar_cases_header": "유사한 사례",
+        "similar_case_text": """
+        <div class="similar-case">
+            <strong>사례 {i}</strong><br>
+            <strong>작업활동:</strong> {activity}<br>
+            <strong>유해위험요인:</strong> {hazard}<br>
+            <strong>위험도:</strong> 빈도 {freq}, 강도 {intensity}, T값 {t_value} (등급 {grade})
+        </div>
+        """,
+        "prediction_result_header": "예측 결과",
+        "activity_result": "작업활동: {activity}",
+        "hazard_result": "예측된 유해위험요인: {hazard}",
+        "result_table_columns": ["항목", "값"],
+        "result_table_rows": ["빈도", "강도", "T 값", "위험등급"],
+        "parsing_error": "위험성 평가 결과를 파싱할 수 없습니다.",
+        "gpt_response": "GPT 원문 응답: {response}",
+        "phase2_header": "개선대책 자동 생성 (Phase 2)",
+        "language_select_label": "개선대책 언어 선택:",
+        "input_method_label": "입력 방식 선택:",
+        "input_methods": ["Phase 1 평가 결과 사용", "직접 입력"],
+        "phase1_results_header": "Phase 1 평가 결과",
+        "risk_level_text": "위험도: 빈도 {freq}, 강도 {intensity}, T값 {t_value} (등급 {grade})",
+        "phase1_first_warning": "먼저 Phase 1에서 위험성 평가를 수행하세요.",
+        "hazard_label": "유해위험요인:",
+        "frequency_label": "빈도 (1-5):",
+        "intensity_label": "강도 (1-5):",
+        "t_value_text": "T값: {t_value} (등급: {grade})",
+        "generate_improvement_btn": "개선대책 생성",
+        "generating_improvement": "개선대책을 생성하는 중...",
+        "no_data_warning": "Phase 1에서 데이터 로드 및 인덱스 구성을 완료하지 않았습니다. 기본 예시를 사용합니다.",
+        "improvement_result_header": "개선대책 생성 결과",
+        "improvement_plan_header": "개선대책",
+        "risk_improvement_header": "위험도 개선 결과",
+        "comparison_columns": ["항목", "개선 전", "개선 후"],
+        "risk_reduction_label": "위험 감소율 (RRR)",
+        "t_value_change_header": "위험도(T값) 변화",
+        "before_improvement": "개선 전 T값:",
+        "after_improvement": "개선 후 T값:",
+        "parsing_error_improvement": "개선대책 생성 결과를 파싱할 수 없습니다."
+    },
+    "English": {
+        "title": "Artificial Intelligence Risk Assessment",
+        "tab_overview": "System Overview",
+        "tab_phase1": "Risk Assessment (Phase 1)",
+        "tab_phase2": "Improvement Measures (Phase 2)",
+        "overview_header": "LLM-based Risk Assessment System",
+        "overview_text": """
+        The risk assessment automation system using LLM (Large Language Model) innovatively improves safety management at construction sites:
+        
+        1. <span class="highlight">Automatic prediction of 'hazards' and risk level calculation through generative AI</span> <span class="phase-badge">Phase 1</span>
+        2. <span class="highlight">Automatic generation of improvement measures and reduction rate prediction to reduce risk level</span> <span class="phase-badge">Phase 2</span>
+        3. AI learns existing risk assessments at construction sites by process and their hazard factors
+        4. After the development of automatic generation technology, risk analysis and improvement measures based on risk level
+        
+        This system is expected to evolve into an integrated accident prediction program through the incorporation of AI technology into EHS platforms such as PIMS and Safety Guardian.
+        """,
+        "process_title": "AI Risk Assessment Process",
+        "process_steps": ["Work Input", "AI Risk Analysis", "Hazard Prediction", "Risk Level Calculation", "Auto-generate Improvements", "Safety Measures"],
+        "features_title": "System Features and Components",
+        "phase1_features": """
+        #### Phase 1: Risk Assessment Automation
+        - Learning risk assessment data according to work activities by process
+        - Automatic hazard prediction when work activities are entered
+        - Similar case search and display
+        - Risk level (frequency, intensity, T) measurement based on large language models (LLM)
+        - Automatic analysis of Excel-based process-specific risk assessment data
+        - Automatic risk grade (A-E) calculation
+        """,
+        "phase2_features": """
+        #### Phase 2: Automatic Generation of Improvement Measures
+        - Automatic generation of customized improvement measures for risk factors
+        - Multilingual (Korean/English/Chinese) improvement measure generation support
+        - Automatic comparative analysis of risk level (T) before and after improvement
+        - Quantitative calculation of Risk Reduction Rate (RRR)
+        - Building a database of optimal improvement measures by work type/process
+        """,
+        "phase1_header": "Risk Assessment Automation (Phase 1)",
+        "api_key_label": "Enter OpenAI API Key:",
+        "dataset_label": "Select Dataset",
+        "load_data_label": "Load Data and Configure Index",
+        "load_data_btn": "Load Data and Configure Index",
+        "api_key_warning": "Please enter an OpenAI API key to continue.",
+        "data_loading": "Loading data and configuring index...",
+        "demo_limit_info": "For demo purposes, only embedding {max_texts} texts. In a real environment, all data should be processed.",
+        "data_load_success": "Data load and index configuration complete! (Total {max_texts} items processed)",
+        "hazard_prediction_header": "Hazard Prediction",
+        "load_first_warning": "Please click the [Load Data and Configure Index] button first.",
+        "activity_label": "Work Activity:",
+        "predict_hazard_btn": "Predict Hazards",
+        "activity_warning": "Please enter a work activity.",
+        "predicting_hazard": "Predicting hazards...",
+        "similar_cases_header": "Similar Cases",
+        "similar_case_text": """
+        <div class="similar-case">
+            <strong>Case {i}</strong><br>
+            <strong>Work Activity:</strong> {activity}<br>
+            <strong>Hazard:</strong> {hazard}<br>
+            <strong>Risk Level:</strong> Frequency {freq}, Intensity {intensity}, T-value {t_value} (Grade {grade})
+        </div>
+        """,
+        "prediction_result_header": "Prediction Results",
+        "activity_result": "Work Activity: {activity}",
+        "hazard_result": "Predicted Hazard: {hazard}",
+        "result_table_columns": ["Item", "Value"],
+        "result_table_rows": ["Frequency", "Intensity", "T Value", "Risk Grade"],
+        "parsing_error": "Unable to parse risk assessment results.",
+        "gpt_response": "Original GPT Response: {response}",
+        "phase2_header": "Automatic Generation of Improvement Measures (Phase 2)",
+        "language_select_label": "Select Language for Improvement Measures:",
+        "input_method_label": "Select Input Method:",
+        "input_methods": ["Use Phase 1 Assessment Results", "Direct Input"],
+        "phase1_results_header": "Phase 1 Assessment Results",
+        "risk_level_text": "Risk Level: Frequency {freq}, Intensity {intensity}, T-value {t_value} (Grade {grade})",
+        "phase1_first_warning": "Please perform a risk assessment in Phase 1 first.",
+        "hazard_label": "Hazard:",
+        "frequency_label": "Frequency (1-5):",
+        "intensity_label": "Intensity (1-5):",
+        "t_value_text": "T-value: {t_value} (Grade: {grade})",
+        "generate_improvement_btn": "Generate Improvement Measures",
+        "generating_improvement": "Generating improvement measures...",
+        "no_data_warning": "Data loading and index configuration was not completed in Phase 1. Using basic examples.",
+        "improvement_result_header": "Improvement Measure Generation Results",
+        "improvement_plan_header": "Improvement Measures",
+        "risk_improvement_header": "Risk Level Improvement Results",
+        "comparison_columns": ["Item", "Before Improvement", "After Improvement"],
+        "risk_reduction_label": "Risk Reduction Rate (RRR)",
+        "t_value_change_header": "Risk Level (T-value) Change",
+        "before_improvement": "T-value Before Improvement:",
+        "after_improvement": "T-value After Improvement:",
+        "parsing_error_improvement": "Unable to parse improvement measure generation results."
+    },
+    "Chinese": {
+        "title": "Artificial Intelligence Risk Assessment",
+        "tab_overview": "系统概述",
+        "tab_phase1": "风险评估 (第1阶段)",
+        "tab_phase2": "改进措施 (第2阶段)",
+        "overview_header": "基于LLM的风险评估系统",
+        "overview_text": """
+        使用LLM（大型语言模型）的风险评估自动化系统创新地改善了建筑工地的安全管理：
+        
+        1. <span class="highlight">通过生成式AI自动预测"危害因素"并计算风险等级</span> <span class="phase-badge">第1阶段</span>
+        2. <span class="highlight">自动生成改进措施并预测降低风险的比率</span> <span class="phase-badge">第2阶段</span>
+        3. AI按工序学习建筑工地的现有风险评估及其危害因素
+        4. 在自动生成技术开发完成后，基于风险等级进行风险分析和改进措施生成
+        
+        该系统有望通过将AI技术整合到EHS平台（如PIMS和安全卫士）中，发展成为一个综合事故预测程序。
+        """,
+        "process_title": "AI风险评估流程",
+        "process_steps": ["工作输入", "AI风险分析", "危害预测", "风险等级计算", "自动生成改进措施", "安全措施"],
+        "features_title": "系统特点和组件",
+        "phase1_features": """
+        #### 第1阶段：风险评估自动化
+        - 按工序学习与工作活动相关的风险评估数据
+        - 输入工作活动时自动预测危害因素
+        - 相似案例搜索和显示
+        - 基于大型语言模型(LLM)的风险等级（频率、强度、T值）测量
+        - 自动分析基于Excel的特定工序风险评估数据
+        - 自动计算风险等级(A-E)
+        """,
+        "phase2_features": """
+        #### 第2阶段：自动生成改进措施
+        - 为风险因素自动生成定制的改进措施
+        - 多语言（韩语/英语/中文）改进措施生成支持
+        - 改进前后风险等级（T值）的自动比较分析
+        - 风险降低率(RRR)的定量计算
+        - 建立按工作类型/工序的最佳改进措施数据库
+        """,
+        "phase1_header": "风险评估自动化 (第1阶段)",
+        "api_key_label": "输入OpenAI API密钥：",
+        "dataset_label": "选择数据集",
+        "load_data_label": "加载数据和配置索引",
+        "load_data_btn": "加载数据和配置索引",
+        "api_key_warning": "请输入OpenAI API密钥以继续。",
+        "data_loading": "正在加载数据和配置索引...",
+        "demo_limit_info": "出于演示目的，仅嵌入{max_texts}个文本。在实际环境中，应处理所有数据。",
+        "data_load_success": "数据加载和索引配置完成！（共处理{max_texts}个项目）",
+        "hazard_prediction_header": "危害预测",
+        "load_first_warning": "请先点击[加载数据和配置索引]按钮。",
+        "activity_label": "工作活动：",
+        "predict_hazard_btn": "预测危害",
+        "activity_warning": "请输入工作活动。",
+        "predicting_hazard": "正在预测危害...",
+        "similar_cases_header": "相似案例",
+        "similar_case_text": """
+        <div class="similar-case">
+            <strong>案例 {i}</strong><br>
+            <strong>工作活动：</strong> {activity}<br>
+            <strong>危害：</strong> {hazard}<br>
+            <strong>风险等级：</strong> 频率 {freq}, 强度 {intensity}, T值 {t_value} (等级 {grade})
+        </div>
+        """,
+        "prediction_result_header": "预测结果",
+        "activity_result": "工作活动: {activity}",
+        "hazard_result": "预测的危害: {hazard}",
+        "result_table_columns": ["项目", "值"],
+        "result_table_rows": ["频率", "强度", "T值", "风险等级"],
+        "parsing_error": "无法解析风险评估结果。",
+        "gpt_response": "原始GPT响应: {response}",
+        "phase2_header": "自动生成改进措施 (第2阶段)",
+        "language_select_label": "选择改进措施的语言：",
+        "input_method_label": "选择输入方法：",
+        "input_methods": ["使用第1阶段评估结果", "直接输入"],
+        "phase1_results_header": "第1阶段评估结果",
+        "risk_level_text": "风险等级: 频率 {freq}, 强度 {intensity}, T值 {t_value} (等级 {grade})",
+        "phase1_first_warning": "请先在第1阶段进行风险评估。",
+        "hazard_label": "危害：",
+        "frequency_label": "频率 (1-5)：",
+        "intensity_label": "强度 (1-5)：",
+        "t_value_text": "T值: {t_value} (等级: {grade})",
+        "generate_improvement_btn": "生成改进措施",
+        "generating_improvement": "正在生成改进措施...",
+        "no_data_warning": "在第1阶段未完成数据加载和索引配置。使用基本示例。",
+        "improvement_result_header": "改进措施生成结果",
+        "improvement_plan_header": "改进措施",
+        "risk_improvement_header": "风险等级改进结果",
+        "comparison_columns": ["项目", "改进前", "改进后"],
+        "risk_reduction_label": "风险降低率 (RRR)",
+        "t_value_change_header": "风险等级 (T值) 变化",
+        "before_improvement": "改进前T值：",
+        "after_improvement": "改进后T值：",
+        "parsing_error_improvement": "无法解析改进措施生成结果。"
+    }
+}
 
 # 페이지 설정
 st.set_page_config(
@@ -1152,4 +1428,4 @@ with col2:
     else:
         st.warning("doosan.png 파일을 찾을 수 없습니다.")
 
-st.markdown('</div>', unsafe_allow_html=True) 
+st.markdown('</div>', unsafe_allow_html=True)
