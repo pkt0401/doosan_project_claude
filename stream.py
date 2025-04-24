@@ -355,10 +355,6 @@ def construct_prompt_phase1_risk(retrieved_docs, activity_text, hazard_text, lan
             # 언어별 JSON 출력 형식
             if language == "Korean":
                 example_output = f'{{"빈도": {frequency}, "강도": {intensity}, "T": {T_value}}}'
-            elif language == "English":
-                example_output = f'{{"frequency": {frequency}, "intensity": {intensity}, "T": {T_value}}}'
-            elif language == "Chinese":
-                example_output = f'{{"频率": {frequency}, "强度": {intensity}, "T": {T_value}}}'
             else:
                 example_output = f'{{"빈도": {frequency}, "강도": {intensity}, "T": {T_value}}}'
                 
@@ -539,72 +535,7 @@ Output (Improvement Plan and Risk Reduction) in JSON:
   "T 감소율": 80.00
 }
 """
-        # 영어 기본 예시
-        elif target_language == "English":
-            example_section = """
-Example:
-Input (Activity): Excavation and backfilling
-Input (Hazard): Collapse of excavation wall due to improper sloping
-Input (Original Frequency): 3
-Input (Original Intensity): 4
-Input (Original T): 12
-Output (Improvement Plan and Risk Reduction) in JSON:
-{
-  "improvement_plan": "1) Maintain proper slope according to soil classification 2) Reinforce excavation walls 3) Conduct regular ground condition inspections",
-  "improved_frequency": 1,
-  "improved_intensity": 2,
-  "improved_T": 2,
-  "reduction_rate": 83.33
-}
 
-Example:
-Input (Activity): Lifting operation
-Input (Hazard): Material fall due to improper rigging
-Input (Original Frequency): 2
-Input (Original Intensity): 5
-Input (Original T): 10
-Output (Improvement Plan and Risk Reduction) in JSON:
-{
-  "improvement_plan": "1) Involve rigging experts in operations 2) Pre-inspect rigging equipment 3) Set up safety zones and control access",
-  "improved_frequency": 1,
-  "improved_intensity": 2,
-  "improved_T": 2,
-  "reduction_rate": 80.00
-}
-"""
-        # 중국어 기본 예시
-        elif target_language == "Chinese":
-            example_section = """
-示例:
-输入 (工作活动): Excavation and backfilling
-输入 (危害): Collapse of excavation wall due to improper sloping
-输入 (原频率): 3
-输入 (原强度): 4
-输入 (原T值): 12
-输出 (改进计划和风险降低) 以JSON格式:
-{
-  "改进措施": "1) 根据土壤分类维持适当的斜坡 2) 加固挖掘墙壁 3) 定期进行地面状况检查",
-  "改进后频率": 1,
-  "改进后强度": 2,
-  "改进后T值": 2,
-  "T值降低率": 83.33
-}
-
-示例:
-输入 (工作活动): Lifting operation
-输入 (危害): Material fall due to improper rigging
-输入 (原频率): 2
-输入 (原强度): 5
-输入 (原T值): 10
-输出 (改进计划和风险降低) 以JSON格式:
-{
-  "改进措施": "1) 吊装专家参与作业 2) 预检查吊装设备 3) 设置安全区域并控制进入",
-  "改进后频率": 1,
-  "改进后强度": 2,
-  "改进后T值": 2,
-  "T值降低率": 80.00
-}
-"""
     
     # 언어별 JSON 출력 키 이름
     json_keys = {
@@ -1020,11 +951,11 @@ with tabs[2]:
                 if parsed_result:
                     # 키 이름 매핑
                     key_mappings = {
-                        "improvement": "개선대책" if target_language == "Korean" else "improvement_plan" if target_language == "English" else "改进措施",
-                        "improved_freq": "개선 후 빈도" if target_language == "Korean" else "improved_frequency" if target_language == "English" else "改进后频率",
-                        "improved_intensity": "개선 후 강도" if target_language == "Korean" else "improved_intensity" if target_language == "English" else "改进后强度",
-                        "improved_t": "개선 후 T" if target_language == "Korean" else "improved_T" if target_language == "English" else "改进后T值",
-                        "reduction_rate": "T 감소율" if target_language == "Korean" else "reduction_rate" if target_language == "English" else "T值降低率"
+                        "improvement": "개선대책" if target_language == "Korean", 
+                        "improved_freq": "개선 후 빈도" if target_language == "Korean", 
+                        "improved_intensity": "개선 후 강도" if target_language == "Korean",
+                        "improved_t": "개선 후 T" if target_language == "Korean",
+                        "reduction_rate": "T 감소율" if target_language == "Korean" 
                     }
                     
                     # 결과 표시
