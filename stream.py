@@ -262,7 +262,7 @@ if st.button("위험성 평가 + 개선대책 생성"):
             # 유사 사례 테이블 (NEW)
             st.markdown("##### 유사 사례 상세 (Table)")
             st.dataframe(examples[[
-                "작업활동 및 내용", "유해위험요인 및 환경측면 영향", "빈도", "강도", "T", "등급"
+                "작업활동 및 내용", "유해위험요인 및 환경측면 영향", "빈도", "강도", "T", "등급","개선대책", "개선 후 빈도", "개선 후 강도", "개선 후 T", "T 감소율"]
             ]])
 
             # ------- Phase 1: Hazard -------
@@ -336,15 +336,17 @@ if st.button("위험성 평가 + 개선대책 생성"):
                 "항목": ["작업활동", "예상 유해위험요인", "빈도", "강도", "T", "등급", "개선대책", "개선 후 빈도", "개선 후 강도", "개선 후 T", "T 감소율"],
                 "값": [work, hazard, freq, sev, t_val, grade, imp_parsed["개선대책"], imp_freq, imp_sev, imp_t, rrr],
             })
-            summary_df.to_excel(writer, index=False, sheet_name="Summary")
+            summary_df.to_csv(writer, index=False, sheet_name="Summary")
             # 시트 2: 유사 사례
-            examples.to_excel(writer, index=False, sheet_name="Similar Cases")
+            examples.to_csv(writer, index=False, sheet_name="Similar Cases")
         output.seek(0)
 
+
+        
         st.download_button(
             label="📥 결과 Excel 다운로드",
             data=output.getvalue(),
-            file_name="risk_assessment_result.xlsx",
+            file_name="risk_assessment_result.csv",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
 
