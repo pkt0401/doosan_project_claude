@@ -2,7 +2,7 @@
 footer_cols = st.columns([1,1])
 for path,col in zip(["cau.png","doosan.png"],footer_cols):
     if os.path.exists(path):
-        col.image(Image.open(path), width=140)"""
+        col.image(Image.open(path), width=140)
 Streamlit App: Integrated AI Risk Assessment (Phase 1 + Phase 2)
 ----------------------------------------------------------------
 * Single input → full pipeline (hazard prediction ➝ risk grading ➝ improvement measures)
