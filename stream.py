@@ -1,10 +1,10 @@
 """
-Streamlit App: Integrated AI Risk Assessment (Phase 1 + Phase 2)
+Streamlit App: Integrated AI Risk Assessment (Phase 1 + Phase 2)
 ----------------------------------------------------------------
 * Single input → full pipeline (hazard prediction ➝ risk grading ➝ improvement measures)
 * Multilingual UI (Korean / English / Chinese)
 * No artificial embedding‑count limits or demo warning messages
-* Phase 2 prompt examples explicitly include the “Improvement Plan” field
+* Phase 2 prompt examples explicitly include the "Improvement Plan" field
 """
 # ---------- Imports ----------
 import streamlit as st
@@ -16,6 +16,97 @@ import re
 import os
 from PIL import Image
 from sklearn.model_selection import train_test_split
+
+# ---------- Utility Functions ----------
+def _load_data(name:str)->pd.DataFrame:
+    """Load xlsx ↦ tidy DataFrame, compute T & grade."""
+    try:
+        df = pd.read_excel(f"{name}.xlsx")
+        if '삭제 Del' in df.columns:
+            df = df.drop(['삭제 Del'], axis=1)
+        df = df.iloc[1:]
+        df = df.rename(columns={df.columns[4]:'빈도', df.columns[5]:'강도', df.columns[6]:'T'})
+        df['T'] = pd.to_numeric(df['빈도'])*pd.to_numeric(df['강도'])
+        df['등급'] = df['T'].apply(grade)
+        df['content'] = df.apply(lambda r:' '.join(r.astype(str)), axis=1)
+        return df.reset_index(drop=True)
+    except Exception as e:
+        st.error(f"데이터 로드 오류: {e}")
+        # fallback dummy
+        data={"작업활동 및 내용":["Excavation"],"유해위험요인 및 환경측면 영향":["Collapse"],"빈도":[3],"강도":[4]}
+        df=pd.DataFrame(data)
+        df['T']=df['빈도']*df['강도'];df['등급']=df['T'].apply(grade);df['content']=df.apply(lambda r:' '.join(r.astype(str)),axis=1)
+        return df
+
+def _embed(texts, list_api_key):
+    openai.api_key=list_api_key
+    embs=[]
+    for t in texts:
+        r=openai.Embedding.create(model="text-embedding-3-large",input=[t.replace("\n"," ")])
+        embs.append(r['data'][0]['embedding'])
+    return embs
+
+def _build_index(df, api_key):
+    embs=_embed(df['content'].tolist(), api_key)
+    arr=np.array(embs, dtype='float32')
+    index=faiss.IndexFlatL2(arr.shape[1])
+    index.add(arr)
+    return index
+
+# ----- Prompt builders & parsers (simplified) -----
+def _prompt_hazard(docs, activity):
+    examples="".join([
+        f"예시 {i+1}:\n작업활동: {r['작업활동 및 내용']}\n유해위험요인: {r['유해위험요인 및 환경측면 영향']}\n\n"
+        for i,(_,r) in enumerate(docs.iterrows()) ])
+    return f"""다음은 건설현장 작업활동과 유해위험요인 예시입니다.\n\n{examples}다음 작업활동의 유해위험요인을 예측하세요:\n작업활동: {activity}\n유해위험요인:"""
+
+def _prompt_risk(docs, activity, hazard):
+    examples="".join([
+        f"예시 {i+1}:\n입력: {r['작업활동 및 내용']} - {r['유해위험요인 및 환경측면 영향']}\n출력: {{\"빈도\": {r['빈도']}, \"강도\": {r['강도']}, \"T\": {r['T']}}}\n\n"
+        for i,(_,r) in enumerate(docs.iterrows()) ])
+    return f"""{examples}입력: {activity} - {hazard}\n빈도와 강도를 1~5 정수로 예측하고 JSON으로 출력: {{\"빈도\": n, \"강도\": n, \"T\": n}}\n출력:"""
+
+def _prompt_improve(docs, activity, hazard, f, i, t):
+    # Include improvement plan in examples
+    examples="""
+Example:
+Input (Activity): Excavation
+Input (Hazard): Wall collapse
+Input (Original F/I/T): 3/4/12
+Output (Improvement) JSON:
+{"""+"\n  \"개선대책\": \"1) 토양 경사 준수 2) 지보공 설치 3) 점검\",\n  \"개선 후 빈도\": 1,\n  \"개선 후 강도\": 2,\n  \"개선 후 T\": 2,\n  \"T 감소율\": 83.33\n}"""
+    return f"""{examples}\n새로운 입력:\nInput (Activity): {activity}\nInput (Hazard): {hazard}\nInput (Original F/I/T): {f}/{i}/{t}\nJSON key: 개선대책, 개선 후 빈도, 개선 후 강도, 개선 후 T, T 감소율\n번호 매긴 개선대책을 한국어로 3개 이상 포함하고 올바른 JSON만 출력하세요.\n출력:"""
+
+def _ask_gpt(prompt, api_key, model="gpt-4o"):
+    openai.api_key=api_key
+    res=openai.ChatCompletion.create(model=model,temperature=0, messages=[{"role":"user","content":prompt}])
+    return res['choices'][0]['message']['content']
+
+def _parse_risk(txt):
+    m=re.search(r'\{"빈도"\s*:\s*(\d),\s*"강도"\s*:\s*(\d),\s*"T"\s*:\s*(\d+)\}',txt)
+    return (int(m.group(1)),int(m.group(2)),int(m.group(3))) if m else (3,3,9)
+
+def _parse_improve(txt):
+    try:
+        j=re.search(r'\{.*\}',txt,re.S).group()
+        data=pd.json.loads(j)
+    except:
+        data={}
+    return {
+        "plan": data.get("개선대책",""),
+        "f": data.get("개선 후 빈도",1),
+        "i": data.get("개선 후 강도",1),
+        "t": data.get("개선 후 T",1),
+        "rrr": data.get("T 감소율",0),
+    }
+
+# ---------- Helper: Grade ----------
+GRADE = [(16,25,'A'),(10,15,'B'),(5,9,'C'),(3,4,'D'),(1,2,'E')]
+def grade(t):
+    for lo,hi,g in GRADE:
+        if lo<=t<=hi: return g
+    return "?"
+
 # ---------- Language Pack ----------
 # (trimmed to the fields referenced in the new UI; you can freely extend)
 LANG = {
@@ -89,8 +180,10 @@ LANG = {
         "input_warn": "请输入工作活动。",
     },
 }
+
 # ---------- Page Config ----------
 st.set_page_config("AI Risk Assessment", ":망치와_렌치:", layout="wide")
+
 # ---------- Style ----------
 st.markdown(
     """
@@ -102,11 +195,13 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+
 # ---------- Session State ----------
 ss = st.session_state
 for key, default in {
     "lang": "Korean", "index": None, "df": None, "api_key": ""}.items():
     ss.setdefault(key, default)
+
 # ---------- Sidebar Controls ----------
 with st.sidebar:
     ss.lang = st.selectbox("Language / 언어", list(LANG.keys()), index=list(LANG).index(ss.lang))
@@ -121,19 +216,15 @@ with st.sidebar:
             st.warning(txt["api_warn"])
         else:
             with st.spinner(txt["loading"]):
-                ss.df = _load_data(dataset_name)  # function defined later
-                ss.index = _build_index(ss.df, ss.api_key)  # function defined later
+                ss.df = _load_data(dataset_name)  # function defined earlier now
+                ss.index = _build_index(ss.df, ss.api_key)  # function defined earlier now
             st.success(txt["loaded"].format(n=len(ss.df)))
+
 # ---------- Main Layout ----------
 st.markdown(f"<p class='title'>{txt['title']}</p>", unsafe_allow_html=True)
 work_activity = st.text_input(txt["work_input"], key="work")
 run = st.button(txt["run_btn"], key="run")
-# ---------- Helper: Grade ----------
-GRADE = [(16,25,'A'),(10,15,'B'),(5,9,'C'),(3,4,'D'),(1,2,'E')]
-def grade(t):
-    for lo,hi,g in GRADE:
-        if lo<=t<=hi: return g
-    return "?"
+
 # ---------- Run Pipeline ----------
 if run:
     if not ss.api_key:
@@ -178,88 +269,9 @@ if run:
         col1,col2 = st.columns(2)
         col1.metric(txt['before'], T)
         col2.metric(txt['after'], newT, delta=f"{rrr:.1f}%")
-# ---------- Utility Functions ----------
-def _load_data(name:str)->pd.DataFrame:
-    """Load xlsx ↦ tidy DataFrame, compute T & grade."""
-    try:
-        df = pd.read_excel(f"{name}.xlsx")
-        if '삭제 Del' in df.columns:
-            df = df.drop(['삭제 Del'], axis=1)
-        df = df.iloc[1:]
-        df = df.rename(columns={df.columns[4]:'빈도', df.columns[5]:'강도', df.columns[6]:'T'})
-        df['T'] = pd.to_numeric(df['빈도'])*pd.to_numeric(df['강도'])
-        df['등급'] = df['T'].apply(grade)
-        df['content'] = df.apply(lambda r:' '.join(r.astype(str)), axis=1)
-        return df.reset_index(drop=True)
-    except Exception as e:
-        st.error(f"데이터 로드 오류: {e}")
-        # fallback dummy
-        data={"작업활동 및 내용":["Excavation"],"유해위험요인 및 환경측면 영향":["Collapse"],"빈도":[3],"강도":[4]}
-        df=pd.DataFrame(data)
-        df['T']=df['빈도']*df['강도'];df['등급']=df['T'].apply(grade);df['content']=df.apply(lambda r:' '.join(r.astype(str)),axis=1)
-        return df
-def _embed(texts,list_api_key):
-    openai.api_key=list_api_key
-    embs=[]
-    for t in texts:
-        r=openai.Embedding.create(model="text-embedding-3-large",input=[t.replace("\n"," ")])
-        embs.append(r['data'][0]['embedding'])
-    return embs
-def _build_index(df, api_key):
-    embs=_embed(df['content'].tolist(), api_key)
-    arr=np.array(embs, dtype='float32')
-    index=faiss.IndexFlatL2(arr.shape[1])
-    index.add(arr)
-    return index
-# ----- Prompt builders & parsers (simplified) -----
-def _prompt_hazard(docs, activity):
-    examples="".join([
-        f"예시 {i+1}:\n작업활동: {r['작업활동 및 내용']}\n유해위험요인: {r['유해위험요인 및 환경측면 영향']}\n\n"
-        for i,(_,r) in enumerate(docs.iterrows()) ])
-    return f"""다음은 건설현장 작업활동과 유해위험요인 예시입니다.\n\n{examples}다음 작업활동의 유해위험요인을 예측하세요:\n작업활동: {activity}\n유해위험요인:"""
-def _prompt_risk(docs, activity, hazard):
-    examples="".join([
-        f"예시 {i+1}:\n입력: {r['작업활동 및 내용']} - {r['유해위험요인 및 환경측면 영향']}\n출력: {{\"빈도\": {r['빈도']}, \"강도\": {r['강도']}, \"T\": {r['T']}}}\n\n"
-        for i,(_,r) in enumerate(docs.iterrows()) ])
-    return f"""{examples}입력: {activity} - {hazard}\n빈도와 강도를 1~5 정수로 예측하고 JSON으로 출력: {{\"빈도\": n, \"강도\": n, \"T\": n}}\n출력:"""
-def _prompt_improve(docs, activity, hazard, f, i, t):
-    # Include improvement plan in examples
-    examples="""
-Example:
-Input (Activity): Excavation
-Input (Hazard): Wall collapse
-Input (Original F/I/T): 3/4/12
-Output (Improvement) JSON:
-{"""+"\n  \"개선대책\": \"1) 토양 경사 준수 2) 지보공 설치 3) 점검\",\n  \"개선 후 빈도\": 1,\n  \"개선 후 강도\": 2,\n  \"개선 후 T\": 2,\n  \"T 감소율\": 83.33\n}"""
-    return f"""{examples}\n새로운 입력:\nInput (Activity): {activity}\nInput (Hazard): {hazard}\nInput (Original F/I/T): {f}/{i}/{t}\nJSON key: 개선대책, 개선 후 빈도, 개선 후 강도, 개선 후 T, T 감소율\n번호 매긴 개선대책을 한국어로 3개 이상 포함하고 올바른 JSON만 출력하세요.\n출력:"""
-def _ask_gpt(prompt, api_key, model="gpt-4o"):
-    openai.api_key=api_key
-    res=openai.ChatCompletion.create(model=model,temperature=0, messages=[{"role":"user","content":prompt}])
-    return res['choices'][0]['message']['content']
-def _parse_risk(txt):
-    m=re.search(r'\{"빈도"\s*:\s*(\d),\s*"강도"\s*:\s*(\d),\s*"T"\s*:\s*(\d+)\}',txt)
-    return (int(m.group(1)),int(m.group(2)),int(m.group(3))) if m else (3,3,9)
-def _parse_improve(txt):
-    try:
-        j=re.search(r'\{.*\}',txt,re.S).group()
-        data=pd.json.loads(j)
-    except:
-        data={}
-    return {
-        "plan": data.get("개선대책",""),
-        "f": data.get("개선 후 빈도",1),
-        "i": data.get("개선 후 강도",1),
-        "t": data.get("개선 후 T",1),
-        "rrr": data.get("T 감소율",0),
-    }
+
 # ---------- Footer ----------
 footer_cols = st.columns([1,1])
 for path,col in zip(["cau.png","doosan.png"],footer_cols):
     if os.path.exists(path):
         col.image(Image.open(path), width=140)
-
-
-
-
-
-
