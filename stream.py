@@ -362,7 +362,7 @@ if run:
             data=excel_data,
             file_name=f"risk_assessment_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )get("t",1)
+        ).get("t",1)
         rrr = imp_parsed.get("rrr", (T-newT)/T*100 if T else 0)
         # 5) Display Phase‑2 outputs
         st.subheader(txt['improvement_header'])
