@@ -1,4 +1,8 @@
-"""
+# ---------- Footer ----------
+footer_cols = st.columns([1,1])
+for path,col in zip(["cau.png","doosan.png"],footer_cols):
+    if os.path.exists(path):
+        col.image(Image.open(path), width=140)"""
 Streamlit App: Integrated AI Risk Assessment (Phase 1 + Phase 2)
 ----------------------------------------------------------------
 * Single input → full pipeline (hazard prediction ➝ risk grading ➝ improvement measures)
@@ -82,9 +86,22 @@ def _prompt_risk(docs, activity, hazard):
     for i, (_, r) in enumerate(docs.iterrows()):
         work = r.get('작업활동 및 내용', '작업 설명 없음')
         hazard_desc = r.get('유해위험요인 및 환경측면 영향', '위험 요인 없음')
-        freq = r.get('빈도', 3)
-        intensity = r.get('강도', 3)
-        t_value = r.get('T', freq * intensity)
+        
+        # 숫자형으로 변환하여 처리
+        try:
+            freq = int(r.get('빈도', 3))
+        except (ValueError, TypeError):
+            freq = 3
+            
+        try:
+            intensity = int(r.get('강도', 3))
+        except (ValueError, TypeError):
+            intensity = 3
+            
+        try:
+            t_value = int(r.get('T', freq * intensity))
+        except (ValueError, TypeError):
+            t_value = freq * intensity
         
         examples.append(f"예시 {i+1}:\n입력: {work} - {hazard_desc}\n출력: {{\"빈도\": {freq}, \"강도\": {intensity}, \"T\": {t_value}}}\n\n")
     
@@ -157,6 +174,8 @@ LANG = {
         "api_warn": "API 키를 입력하세요.",
         "load_warn": "먼저 데이터셋을 로드하세요.",
         "input_warn": "작업활동을 입력하세요.",
+        "download_btn": "Excel로 다운로드",
+        "result_summary": "평가 결과 요약",
     },
     "English": {
         "title": "AI Risk‑Assessment Integrated System",
@@ -180,6 +199,8 @@ LANG = {
         "api_warn": "Please enter an API key.",
         "load_warn": "Load a dataset first.",
         "input_warn": "Please enter a work activity.",
+        "download_btn": "Download as Excel",
+        "result_summary": "Assessment Result Summary",
     },
     "Chinese": {
         "title": "AI风险评估一体化系统",
@@ -203,6 +224,8 @@ LANG = {
         "api_warn": "请输入 API 密钥。",
         "load_warn": "请先加载数据集。",
         "input_warn": "请输入工作活动。",
+        "download_btn": "下载为Excel",
+        "result_summary": "评估结果摘要",
     },
 }
 
@@ -302,9 +325,116 @@ if run:
         col1,col2 = st.columns(2)
         col1.metric(txt['before'], T)
         col2.metric(txt['after'], newT, delta=f"{rrr:.1f}%")
+        
+        # 6) 결과를 Excel로 저장 및 다운로드 제공
+        result_df = save_risk_assessment_result(
+            work_activity, hazard, freq, intensity, T, grade(T), 
+            imp_plan, newF, newI, newT, rrr
+        )
+        
+        # 결과 테이블 표시
+        st.subheader(txt["result_summary"])
+        st.dataframe(result_df)
+        
+        # Excel 다운로드 버튼
+        excel_data = create_excel_download_link(result_df, "risk_assessment_result.xlsx")
+        st.download_button(
+            label=txt["download_btn"],
+            data=excel_data,
+            file_name=f"risk_assessment_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )get("t",1)
+        rrr = imp_parsed.get("rrr", (T-newT)/T*100 if T else 0)
+        # 5) Display Phase‑2 outputs
+        st.subheader(txt['improvement_header'])
+        st.markdown(f"<div class='box'>{imp_plan}</div>", unsafe_allow_html=True)
+        col1,col2 = st.columns(2)
+        col1.metric(txt['before'], T)
+        col2.metric(txt['after'], newT, delta=f"{rrr:.1f}%")
+        
+        # 6) 결과를 Excel로 저장 및 다운로드 제공
+        result_df = save_risk_assessment_result(
+            work_activity, hazard, freq, intensity, T, grade(T), 
+            imp_plan, newF, newI, newT, rrr
+        )
+        
+        # 결과 테이블 표시
+        st.subheader(txt["result_summary"])
+        st.dataframe(result_df)
+        
+        # Excel 다운로드 버튼
+        excel_data = create_excel_download_link(result_df, "risk_assessment_result.xlsx")
+        st.download_button(
+            label=txt["download_btn"],
+            data=excel_data,
+            file_name=f"risk_assessment_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )get("t",1)
+        rrr = imp_parsed.get("rrr", (T-newT)/T*100 if T else 0)
+        # 5) Display Phase‑2 outputs
+        st.subheader(txt['improvement_header'])
+        st.markdown(f"<div class='box'>{imp_plan}</div>", unsafe_allow_html=True)
+        col1,col2 = st.columns(2)
+        col1.metric(txt['before'], T)
+        col2.metric(txt['after'], newT, delta=f"{rrr:.1f}%")
+        
+        # 6) 결과를 Excel로 저장 및 다운로드 제공
+        result_df = save_risk_assessment_result(
+            work_activity, hazard, freq, intensity, T, grade(T), 
+            imp_plan, newF, newI, newT, rrr
+        )
+        
+        # 결과 테이블 표시
+        st.subheader("평가 결과 요약")
+        st.dataframe(result_df)
+        
+        # Excel 다운로드 버튼
+        excel_data = create_excel_download_link(result_df, "risk_assessment_result.xlsx")
+        st.download_button(
+            label="Excel로 다운로드",
+            data=excel_data,
+            file_name=f"risk_assessment_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
 
-# ---------- Footer ----------
-footer_cols = st.columns([1,1])
-for path,col in zip(["cau.png","doosan.png"],footer_cols):
-    if os.path.exists(path):
-        col.image(Image.open(path), width=140)
+# Excel 다운로드 기능 추가
+import io
+from datetime import datetime
+
+def create_excel_download_link(df, filename):
+    """Excel 다운로드 링크 생성"""
+    output = io.BytesIO()
+    writer = pd.ExcelWriter(output, engine='xlsxwriter')
+    df.to_excel(writer, index=False, sheet_name='Sheet1')
+    writer.close()
+    output.seek(0)
+    return output.getvalue()
+
+# 결과 저장 함수 추가
+def save_risk_assessment_result(activity, hazard, freq, intensity, t_value, grade_val, imp_plan, newF, newI, newT, rrr):
+    """위험성 평가 결과를 DataFrame으로 저장"""
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    data = {
+        "평가일시": [now],
+        "작업활동": [activity],
+        "유해위험요인": [hazard],
+        "위험성 평가 전": [{
+            "빈도": freq,
+            "강도": intensity,
+            "T값": t_value,
+            "등급": grade_val
+        }],
+        "개선대책": [imp_plan],
+        "위험성 평가 후": [{
+            "빈도": newF,
+            "강도": newI,
+            "T값": newT,
+            "등급": grade(newT)
+        }],
+        "감소율(%)": [f"{rrr:.1f}"]
+    }
+    
+    # 결과 DataFrame 생성
+    result_df = pd.DataFrame(data)
+    return result_df
