@@ -263,11 +263,8 @@ if st.button("위험성 평가 + 개선대책 생성"):
                     강도: {row['강도']} &nbsp;&nbsp;|&nbsp;&nbsp;
                     T: {row['T']} &nbsp;&nbsp;|&nbsp;&nbsp;
                     등급: {row['등급']}<br><br>
-                    <b>개선대책</b>: {row['개선대책']}<br>
-                    개선 후&nbsp;빈도: {row['개선 후 빈도']} &nbsp;&nbsp;|&nbsp;&nbsp;
-                    개선 후&nbsp;강도: {row['개선 후 강도']} &nbsp;&nbsp;|&nbsp;&nbsp;
-                    개선 후&nbsp;T: {row['개선 후 T']}<br>
-                    T&nbsp;감소율: {row['T 감소율']}
+                    <b>개선대책</b>: {row['개선대책 및 세부관리방안']}<br>
+
                     </div>
                     """,
                     unsafe_allow_html=True,
@@ -276,7 +273,7 @@ if st.button("위험성 평가 + 개선대책 생성"):
             # 유사 사례 테이블 (NEW)
             st.markdown("##### 유사 사례 상세 (Table)")
             st.dataframe(examples[[
-                "작업활동 및 내용", "유해위험요인 및 환경측면 영향", "빈도", "강도", "T", "등급", "개선대책", "개선 후 빈도", "개선 후 강도", "개선 후 T", "T 감소율"
+                "작업활동 및 내용", "유해위험요인 및 환경측면 영향", "빈도", "강도", "T", "등급", "개선대책"
             ]])
 
             # ------- Phase 1: Hazard -------
