@@ -154,7 +154,7 @@ if st.button(system_texts["Korean"]["analyze_btn"]):
             df = load_data(dataset_options[selected_dataset])
             
             # 임베딩 생성 및 FAISS 인덱스 구축
-            embeddings = embed_texts(df['작업활동'].tolist(), api_key)
+            embeddings = embed_texts(df['작업활동 및 내용'].tolist(), api_key)
             index = faiss.IndexFlatIP(embeddings.shape[1])
             faiss.normalize_L2(embeddings)
             index.add(embeddings)
