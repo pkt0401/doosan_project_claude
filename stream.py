@@ -896,7 +896,7 @@ with tabs[1]:
         if not api_key: st.warning(texts['api_key_warning'])
         else:
             with st.spinner(texts['data_loading']):
-                df=load_data(dataset_name.split(' ')[0])
+                df=load_data(dataset_name)
                 train_df,_=train_test_split(df, test_size=0.1, random_state=42)
                 pool_df=train_df.copy(); pool_df['content']=pool_df.apply(lambda r:' '.join(r.values.astype(str)),axis=1)
                 to_embed=pool_df['content'].tolist(); max_texts=min(len(to_embed),20)
