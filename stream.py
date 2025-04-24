@@ -302,6 +302,36 @@ def determine_grade(value: int):
     if 1<=value<=2: return 'E'
     return 'Unknown' if ss.language!='Korean' else '알 수 없음'
 
+
+def _extract_improvement_info(row):
+    """
+    유사 사례 한 건에서 - 개선대책 / 개선 후 빈도·강도·T 값을 최대한 찾아 반환
+    """
+    # ① 개선대책
+    plan_cols = [c for c in row.index if re.search(r'개선대책|Improvement|改进', c, re.I)]
+    plan = row[plan_cols[0]] if plan_cols else ""
+
+    # ② 개선 후 빈도·강도·T
+    cand_sets = [
+        ('개선 후 빈도', '개선 후 강도', '개선 후 T'),
+        ('개선빈도', '개선강도', '개선T'),
+        ('improved_frequency', 'improved_intensity', 'improved_T'),
+        ('改进后频率', '改进后强度', '改进后T值'),
+    ]
+    imp_f, imp_i, imp_t = None, None, None
+    for f,i,t in cand_sets:
+        if f in row and i in row and t in row:
+            imp_f, imp_i, imp_t = int(row[f]), int(row[i]), int(row[t])
+            break
+
+    # 값이 없으면 원래 값 그대로
+    if imp_f is None:
+        imp_f, imp_i = int(row['빈도']), int(row['강도'])
+        imp_t        = imp_f * imp_i
+
+    return plan, imp_f, imp_i, imp_t
+
+
 @st.cache_data(show_spinner=False)
 def load_data(selected_dataset_name: str):
     try:
@@ -948,12 +978,51 @@ with tabs[1]:
 
                 # --------------------- 출력 -----------------------------
                 st.markdown(f"### {texts['similar_cases_header']}")
-                for i,(_,doc) in enumerate(sim_docs.iterrows(),1):
-                    imp_field=[c for c in doc.index if re.search('개선대책|Improvement|改进',c)]
-                    imp_text=doc[imp_field[0]] if imp_field else ''
-                    st.markdown(texts['similar_case_text'].format(i=i,activity=doc['작업활동 및 내용'],hazard=doc['유해위험요인 및 환경측면 영향'],freq=doc['빈도'],intensity=doc['강도'],t_value=doc['T'],grade=doc['등급']),unsafe_allow_html=True)
-                    if imp_text:
-                        st.markdown(f"<div style='margin-left:20px;'>{imp_text}</div>", unsafe_allow_html=True)
+                similar_records = []   # ⬅︎ 엑셀 저장용
+
+                for i, (_, doc) in enumerate(sim_docs.iterrows(), 1):
+                    plan, imp_f, imp_i, imp_t = _extract_improvement_info(doc)
+                
+                    # -------- Streamlit 화면 출력 --------
+                    st.markdown(
+                        texts['similar_case_text'].format(
+                            i=i,
+                            activity=doc['작업활동 및 내용'],
+                            hazard=doc['유해위험요인 및 환경측면 영향'],
+                            freq=doc['빈도'],
+                            intensity=doc['강도'],
+                            t_value=doc['T'],
+                            grade=doc['등급']
+                        ),
+                        unsafe_allow_html=True
+                    )
+                    # 개선대책 및 개선 후 위험도도 함께 출력
+                    st.markdown(
+                        f"""
+                        <div style='margin-left:20px; font-size:0.9rem;'>
+                            <b>{texts['improvement_plan_header']}:</b> {plan if plan else "-"}<br>
+                            <b>{texts['comparison_columns'][2]}:</b> F={imp_f}, I={imp_i}, T={imp_t}
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
+                
+                    # -------- 엑셀 저장용 레코드 --------
+                    similar_records.append({
+                        "No":                i,
+                        "작업활동":           doc['작업활동 및 내용'],
+                        "유해위험요인":        doc['유해위험요인 및 환경측면 영향'],
+                        "빈도":               doc['빈도'],
+                        "강도":               doc['강도'],
+                        "T":                 doc['T'],
+                        "위험등급":            doc['등급'],
+                        "개선대책":            plan,
+                        "개선 후 빈도":         imp_f,
+                        "개선 후 강도":         imp_i,
+                        "개선 후 T":           imp_t,
+                        "RRR(%)":            round((doc['T']-imp_t)/doc['T']*100,2) if doc['T'] else 0
+                    })
+
 
                 result_df=pd.DataFrame({texts['result_table_columns'][0]:texts['result_table_rows'],texts['result_table_columns'][1]:[freq,inten,T,grade]})
                 comp_df=pd.DataFrame({texts['comparison_columns'][0]:texts['result_table_rows'],texts['comparison_columns'][1]:[freq,inten,T,grade],texts['comparison_columns'][2]:[imp_freq,imp_int,imp_T,determine_grade(imp_T)]})
@@ -975,11 +1044,16 @@ with tabs[1]:
 
                 # ---------------- Excel Export --------------------------
                 def to_excel_bytes():
-                    output=io.BytesIO()
-                    with pd.ExcelWriter(output, engine='xlsxwriter') as wr:
-                        result_df.to_excel(wr, sheet_name='Phase1', index=False)
-                        comp_df.to_excel(wr, sheet_name='Phase2', index=False)
+                    output = io.BytesIO()
+                    with pd.ExcelWriter(output, engine="xlsxwriter") as wr:
+                        # Phase 1 결과
+                        result_df.to_excel(wr, sheet_name="Phase1",  index=False)
+                        # Phase 2 결과
+                        comp_df.to_excel(wr,   sheet_name="Phase2",  index=False)
+                        # 유사 사례
+                        pd.DataFrame(similar_records).to_excel(wr, sheet_name="SimilarCases", index=False)
                     return output.getvalue()
+
                 st.download_button("📥 결과 Excel 다운로드", data=to_excel_bytes(), file_name="risk_assessment.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
                 # Phase2 progress bars
