@@ -358,18 +358,40 @@ def load_data(selected_dataset_name: str):
         }
         df.rename(columns=rename_map, inplace=True)
 
-        # 5) ‘위험성 Risk Rate|빈도…’ 6개 → ①개선전 ②개선후 로 구분
-        risk_cols = [c for c in df.columns if c.startswith("위험성 Risk Rate|")]
-        # 순서대로 [빈도, 강도, T] × 2 세트라 가정
-        ori_freq, ori_int, ori_t, imp_freq, imp_int, imp_t = risk_cols
 
+        risk_cols = [
+            c for c in df.columns
+            if re.match(r"위험성 Risk Rate(\.\d+)?\|", c)
+        ]
+        
+        # 컬럼 순서는 엑셀 그대로라고 가정 ⇒ [빈도, 강도, T] × (1 또는 2)
+        if len(risk_cols) < 3:
+            raise ValueError("Risk-rate columns not found.")
+        
+        # 첫 3개 = 개선 전 --------------------------------------------------------
+        ori_freq, ori_int, ori_t = risk_cols[:3]
         df.rename(
-            columns={
-                ori_freq: "빈도", ori_int: "강도", ori_t: "T",
-                imp_freq: "개선 후 빈도", imp_int: "개선 후 강도", imp_t: "개선 후 T"
-            },
+            columns={ori_freq: "빈도", ori_int: "강도", ori_t: "T"},
             inplace=True
         )
+        
+        # 뒤에 3개(있으면) = 개선 후 --------------------------------------------
+        if len(risk_cols) >= 6:
+            imp_freq, imp_int, imp_t = risk_cols[3:6]
+            df.rename(
+                columns={
+                    imp_freq: "개선 후 빈도",
+                    imp_int:  "개선 후 강도",
+                    imp_t:    "개선 후 T"
+                },
+                inplace=True
+        )
+        else:
+            # 개선 후 세트가 없으면 Null 로 채우고 이후 단계에서 계산
+            df["개선 후 빈도"] = np.nan
+            df["개선 후 강도"] = np.nan
+            df["개선 후 T"]   = np.nan
+
 
         # 6) 개선 후 등급 / 원본 등급 계산
         df["T"] = pd.to_numeric(df["빈도"]) * pd.to_numeric(df["강도"])
