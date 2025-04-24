@@ -5,10 +5,10 @@ for path,col in zip(["cau.png","doosan.png"],footer_cols):
         col.image(Image.open(path), width=140)
 Streamlit App: Integrated AI Risk Assessment (Phase 1 + Phase 2)
 ----------------------------------------------------------------
-* Single input → full pipeline (hazard prediction ➝ risk grading ➝ improvement measures)
-* Multilingual UI (Korean / English / Chinese)
-* No artificial embedding‑count limits or demo warning messages
-* Phase 2 prompt examples explicitly include the "Improvement Plan" field
+#* Single input → full pipeline (hazard prediction ➝ risk grading ➝ improvement measures)
+#* Multilingual UI (Korean / English / Chinese)
+#* No artificial embedding‑count limits or demo warning messages
+#* Phase 2 prompt examples explicitly include the "Improvement Plan" field
 """
 # ---------- Imports ----------
 import streamlit as st
