@@ -170,9 +170,9 @@ if st.button(system_texts["Korean"]["analyze_btn"]):
             # 유해위험요인 생성
             hazard_prompt = generate_hazard_prompt(activity, similar_cases[:3])
             hazard = openai.ChatCompletion.create(
-                model="gpt-4",
+                model="gpt-4o",
                 messages=[{"role": "user", "content": hazard_prompt}],
-                temperature=0.2
+                temperature=0.0
             ).choices[0].message.content
             
             # 위험도 계산
@@ -184,9 +184,9 @@ if st.button(system_texts["Korean"]["analyze_btn"]):
             # 개선대책 생성
             improvement_prompt = generate_improvement_prompt(hazard, freq, intensity)
             improvement = openai.ChatCompletion.create(
-                model="gpt-4",
+                model="gpt-4o",
                 messages=[{"role": "user", "content": improvement_prompt}],
-                temperature=0.3
+                temperature=0.0
             ).choices[0].message.content
             
             # 유사 사례 수 계산
