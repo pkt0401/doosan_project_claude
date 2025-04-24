@@ -1,8 +1,4 @@
-# ---------- Footer ----------
-footer_cols = st.columns([1,1])
-for path,col in zip(["cau.png","doosan.png"],footer_cols):
-    if os.path.exists(path):
-        col.image(Image.open(path), width=140)
+
 
 # ---------- Imports ----------
 import streamlit as st
@@ -14,6 +10,12 @@ import re
 import os
 from PIL import Image
 from sklearn.model_selection import train_test_split
+
+# ---------- Footer ----------
+footer_cols = st.columns([1,1])
+for path,col in zip(["cau.png","doosan.png"],footer_cols):
+    if os.path.exists(path):
+        col.image(Image.open(path), width=140)
 
 # ---------- Utility Functions ----------
 def _load_data(name:str)->pd.DataFrame:
