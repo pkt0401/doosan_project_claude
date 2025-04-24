@@ -25,10 +25,23 @@ def _load_data(name:str)->pd.DataFrame:
         if '삭제 Del' in df.columns:
             df = df.drop(['삭제 Del'], axis=1)
         df = df.iloc[1:]
+        
+        # 첫 번째 두 열의 이름을 명시적으로 설정
+        if len(df.columns) >= 2:
+            df = df.rename(columns={
+                df.columns[0]: '작업활동 및 내용',
+                df.columns[1]: '유해위험요인 및 환경측면 영향'
+            })
+        
+        # 빈도, 강도, T 열 이름 설정
         df = df.rename(columns={df.columns[4]:'빈도', df.columns[5]:'강도', df.columns[6]:'T'})
         df['T'] = pd.to_numeric(df['빈도'])*pd.to_numeric(df['강도'])
         df['등급'] = df['T'].apply(grade)
         df['content'] = df.apply(lambda r:' '.join(r.astype(str)), axis=1)
+        
+        # 디버깅을 위해 열 이름 출력
+        st.write("데이터 열:", df.columns.tolist())
+        
         return df.reset_index(drop=True)
     except Exception as e:
         st.error(f"데이터 로드 오류: {e}")
@@ -55,16 +68,28 @@ def _build_index(df, api_key):
 
 # ----- Prompt builders & parsers (simplified) -----
 def _prompt_hazard(docs, activity):
-    examples="".join([
-        f"예시 {i+1}:\n작업활동: {r['작업활동 및 내용']}\n유해위험요인: {r['유해위험요인 및 환경측면 영향']}\n\n"
-        for i,(_,r) in enumerate(docs.iterrows()) ])
-    return f"""다음은 건설현장 작업활동과 유해위험요인 예시입니다.\n\n{examples}다음 작업활동의 유해위험요인을 예측하세요:\n작업활동: {activity}\n유해위험요인:"""
+    examples = []
+    for i, (_, r) in enumerate(docs.iterrows()):
+        work = r.get('작업활동 및 내용', '작업 설명 없음')
+        hazard = r.get('유해위험요인 및 환경측면 영향', '위험 요인 없음')
+        examples.append(f"예시 {i+1}:\n작업활동: {work}\n유해위험요인: {hazard}\n\n")
+    
+    examples_text = "".join(examples)
+    return f"""다음은 건설현장 작업활동과 유해위험요인 예시입니다.\n\n{examples_text}다음 작업활동의 유해위험요인을 예측하세요:\n작업활동: {activity}\n유해위험요인:"""
 
 def _prompt_risk(docs, activity, hazard):
-    examples="".join([
-        f"예시 {i+1}:\n입력: {r['작업활동 및 내용']} - {r['유해위험요인 및 환경측면 영향']}\n출력: {{\"빈도\": {r['빈도']}, \"강도\": {r['강도']}, \"T\": {r['T']}}}\n\n"
-        for i,(_,r) in enumerate(docs.iterrows()) ])
-    return f"""{examples}입력: {activity} - {hazard}\n빈도와 강도를 1~5 정수로 예측하고 JSON으로 출력: {{\"빈도\": n, \"강도\": n, \"T\": n}}\n출력:"""
+    examples = []
+    for i, (_, r) in enumerate(docs.iterrows()):
+        work = r.get('작업활동 및 내용', '작업 설명 없음')
+        hazard_desc = r.get('유해위험요인 및 환경측면 영향', '위험 요인 없음')
+        freq = r.get('빈도', 3)
+        intensity = r.get('강도', 3)
+        t_value = r.get('T', freq * intensity)
+        
+        examples.append(f"예시 {i+1}:\n입력: {work} - {hazard_desc}\n출력: {{\"빈도\": {freq}, \"강도\": {intensity}, \"T\": {t_value}}}\n\n")
+    
+    examples_text = "".join(examples)
+    return f"""{examples_text}입력: {activity} - {hazard}\n빈도와 강도를 1~5 정수로 예측하고 JSON으로 출력: {{\"빈도\": n, \"강도\": n, \"T\": n}}\n출력:"""
 
 def _prompt_improve(docs, activity, hazard, f, i, t):
     # Include improvement plan in examples
@@ -242,8 +267,16 @@ if run:
         # show similar cases
         st.subheader(txt["similar_cases"])
         for i,row in sims.iterrows():
+            # 안전하게 열 접근
+            work_desc = row.get('작업활동 및 내용', '정보 없음')
+            hazard_desc = row.get('유해위험요인 및 환경측면 영향', '정보 없음')
+            t_value = row.get('T', 0)
+            freq = row.get('빈도', 0)
+            intensity = row.get('강도', 0)
+            grade_val = row.get('등급', '-')
+            
             st.markdown(
-                f"<div class='similar-case'><b>#{i}</b><br>작업활동: {row['작업활동 및 내용']}<br>유해위험요인: {row['유해위험요인 및 환경측면 영향']}<br>위험도: {row['T']} (빈도 {row['빈도']}, 강도 {row['강도']}, 등급 {row['등급']})</div>",
+                f"<div class='similar-case'><b>#{i}</b><br>작업활동: {work_desc}<br>유해위험요인: {hazard_desc}<br>위험도: {t_value} (빈도 {freq}, 강도 {intensity}, 등급 {grade_val})</div>",
                 unsafe_allow_html=True)
         # 2) Phase‑1 prompts
         hz_prompt = _prompt_hazard(sims, work_activity)  # helper
