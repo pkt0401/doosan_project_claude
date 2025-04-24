@@ -13,7 +13,7 @@ user_api_key = st.sidebar.text_input("Enter your OpenAI API Key", type="password
 
 # OpenAI 호출 전 API 키 검증
 if not user_api_key:
-    st.warning("⚠️ Please input your OpenAI API Key in the sidebar.")
+    st.warning("⚠️ Please input your OpenAI API Key at left.")
     st.stop()
 
 # Mapping for language selection (display text to code)
