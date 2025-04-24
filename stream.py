@@ -335,98 +335,67 @@ def _extract_improvement_info(row):
 @st.cache_data(show_spinner=False)
 def load_data(selected_dataset_name: str):
     try:
-        # 1) 2-단 헤더까지 읽기
-        df = pd.read_excel(f"{selected_dataset_name}.xlsx", header=[0, 1])
+        df = pd.read_excel(f"{selected_dataset_name}.xlsx")
 
-        # 2) 필요 없는 첫 공백 행·열 제거
-        if ("삭제 Del",) in df.columns:
-            df = df.drop(columns=("삭제 Del",))
-        df = df.iloc[1:]                       # 헤더 바로 아래 빈 행 삭제
+        # 1) 불필요 열 제거
+        if "삭제 Del" in df.columns:
+            df.drop(["삭제 Del"], axis=1, inplace=True)
 
-        # 3) 다단 컬럼을 평탄화 ─ "상위|하위" 형태
-        df.columns = [
-            f"{a.strip()}|{b.strip()}"
-            for a, b in df.columns.to_flat_index()
-        ]
+        # 2) 헤더 바로 아래 빈 행 제거
+        df = df.iloc[1:]
 
-        # 4) 핵심 텍스트/영어 헤더 통일
-        rename_map = {
-            "작업활동 및 내용\nWork & Contents|Unnamed: 1_level_1": "작업활동 및 내용",
-            "유해위험요인 및 환경측면 영향\nHazard & Risk|Unnamed: 2_level_1": "유해위험요인 및 환경측면 영향",
-            "피해형태 및 환경영향\nDamage & Effect|Unnamed: 3_level_1": "피해형태 및 환경영향",
-            "개선대책 및 세부관리방안\nCorrective Action|Unnamed: 10_level_1": "개선대책"
-        }
-        df.rename(columns=rename_map, inplace=True)
-
-
-        risk_cols = [
-            c for c in df.columns
-            if re.match(r"위험성 Risk Rate(\.\d+)?\|", c)
-        ]
-        
-        # 컬럼 순서는 엑셀 그대로라고 가정 ⇒ [빈도, 강도, T] × (1 또는 2)
-        if len(risk_cols) < 3:
-            raise ValueError("Risk-rate columns not found.")
-        
-        # 첫 3개 = 개선 전 --------------------------------------------------------
-        ori_freq, ori_int, ori_t = risk_cols[:3]
+        # 3) 핵심 열 이름 통일
         df.rename(
-            columns={ori_freq: "빈도", ori_int: "강도", ori_t: "T"},
+            columns={
+                df.columns[4]: "빈도",
+                df.columns[5]: "강도",
+                "작업활동 및 내용\nWork & Contents": "작업활동 및 내용",
+                "유해위험요인 및 환경측면 영향\nHazard & Risk": "유해위험요인 및 환경측면 영향",
+                "피해형태 및 환경영향\nDamage & Effect": "피해형태 및 환경영향",
+                # 개선대책 열 통일
+                "개선대책 및 세부관리방안\nCorrective Action": "개선대책"
+            },
             inplace=True
         )
-        
-        # 뒤에 3개(있으면) = 개선 후 --------------------------------------------
-        if len(risk_cols) >= 6:
-            imp_freq, imp_int, imp_t = risk_cols[3:6]
-            df.rename(
-                columns={
-                    imp_freq: "개선 후 빈도",
-                    imp_int:  "개선 후 강도",
-                    imp_t:    "개선 후 T"
-                },
-                inplace=True
-        )
-        else:
-            # 개선 후 세트가 없으면 Null 로 채우고 이후 단계에서 계산
-            df["개선 후 빈도"] = np.nan
-            df["개선 후 강도"] = np.nan
-            df["개선 후 T"]   = np.nan
 
+        # 4) 개선대책 열이 다른 이름으로 들어온 경우 대비
+        if "개선대책" not in df.columns:
+            alt = [c for c in df.columns if "개선대책" in c or "Corrective" in c]
+            if alt:
+                df.rename(columns={alt[0]: "개선대책"}, inplace=True)
 
-        # 6) 개선 후 등급 / 원본 등급 계산
+        # 5) T, 등급 계산
         df["T"] = pd.to_numeric(df["빈도"]) * pd.to_numeric(df["강도"])
         df["등급"] = df["T"].apply(determine_grade)
-        if "개선 후 T" not in df.columns:
-            df["개선 후 T"] = pd.to_numeric(df["개선 후 빈도"]) * pd.to_numeric(df["개선 후 강도"])
-        df["개선 후 등급"] = df["개선 후 T"].apply(determine_grade)
 
-        # 7) 최종 컬럼 정리
-        want_cols = [
-            "작업활동 및 내용", "유해위험요인 및 환경측면 영향", "피해형태 및 환경영향",
-            "빈도", "강도", "T", "등급",
-            "개선 후 빈도", "개선 후 강도", "개선 후 T", "개선 후 등급",
+        # 6) 최종 열 순서 지정 (필요 시 누락된 열은 자동 제외)
+        cols = [
+            "작업활동 및 내용",
+            "유해위험요인 및 환경측면 영향",
+            "피해형태 및 환경영향",
+            "빈도",
+            "강도",
+            "T",
+            "등급",
             "개선대책"
         ]
-        df = df[[c for c in want_cols if c in df.columns]]
+        df = df[[c for c in cols if c in df.columns]]
 
         return df
 
-    # ───────────────────────────── 샘플 데이터 ─────────────────────────────
     except Exception as e:
         st.warning("샘플 데이터를 사용합니다 – " + str(e))
         data = {
             "작업활동 및 내용": ["Shoring Installation", "Transport"],
             "유해위험요인 및 환경측면 영향": ["Fall", "Collision"],
             "피해형태 및 환경영향": ["Injury", "Damage"],
-            "빈도": [3, 3], "강도": [2, 3],
-            "개선 후 빈도": [1, 1], "개선 후 강도": [1, 2],
+            "빈도": [3, 3],
+            "강도": [2, 3],
             "개선대책": ["Install guard rails", "Use spotter & barriers"]
         }
         df = pd.DataFrame(data)
         df["T"] = df["빈도"] * df["강도"]
         df["등급"] = df["T"].apply(determine_grade)
-        df["개선 후 T"] = df["개선 후 빈도"] * df["개선 후 강도"]
-        df["개선 후 등급"] = df["개선 후 T"].apply(determine_grade)
         return df
 
 
