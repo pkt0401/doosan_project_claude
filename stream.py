@@ -337,14 +337,13 @@ def load_data(selected_dataset_name: str):
     try:
         df = pd.read_excel(f"{selected_dataset_name}.xlsx")
 
-        # 1) 불필요 열 제거
+        # ────────────────────────────── 전처리 ──────────────────────────────
+        # 1) 삭제 열 제거 & 헤더 바로 아래 빈 행 제거
         if "삭제 Del" in df.columns:
             df.drop(["삭제 Del"], axis=1, inplace=True)
-
-        # 2) 헤더 바로 아래 빈 행 제거
         df = df.iloc[1:]
 
-        # 3) 핵심 열 이름 통일
+        # 2) 앞쪽(개선 전) 핵심 열 이름 통일
         df.rename(
             columns={
                 df.columns[4]: "빈도",
@@ -352,50 +351,77 @@ def load_data(selected_dataset_name: str):
                 "작업활동 및 내용\nWork & Contents": "작업활동 및 내용",
                 "유해위험요인 및 환경측면 영향\nHazard & Risk": "유해위험요인 및 환경측면 영향",
                 "피해형태 및 환경영향\nDamage & Effect": "피해형태 및 환경영향",
-                # 개선대책 열 통일
                 "개선대책 및 세부관리방안\nCorrective Action": "개선대책"
             },
             inplace=True
         )
 
-        # 4) 개선대책 열이 다른 이름으로 들어온 경우 대비
+        # 3) 뒤쪽(개선 후) 열 탐색 → 통일
+        #    - ‘빈도 Likelihood’, ‘강도 Severity’, 두 번째 ‘T’, ‘등급 Rate’
+        #    - 위치가 고정돼 있지 않으므로 패턴으로 찾는다
+        freq_after_cols = [c for c in df.columns if re.search(r'빈도.*Likelihood', c)]
+        int_after_cols  = [c for c in df.columns if re.search(r'강도.*Severity', c)]
+        t_after_cols    = [c for c in df.columns if re.fullmatch(r'T', c, re.I)]
+        grade_after_cols= [c for c in df.columns if re.search(r'등급.*Rate', c)]
+
+        if freq_after_cols:
+            df.rename(columns={freq_after_cols[0]: "개선 후 빈도"}, inplace=True)
+        if int_after_cols:
+            df.rename(columns={int_after_cols[0]: "개선 후 강도"}, inplace=True)
+        if t_after_cols and len(t_after_cols) > 1:
+            # 첫 번째 T는 앞쪽 Risk Rate, 두 번째 T를 개선 후 T로 간주
+            df.rename(columns={t_after_cols[1]: "개선 후 T"}, inplace=True)
+        elif t_after_cols:
+            df.rename(columns={t_after_cols[0]: "개선 후 T"}, inplace=True)
+        if grade_after_cols:
+            df.rename(columns={grade_after_cols[0]: "개선 후 등급"}, inplace=True)
+
+        # 4) 개선 후 값이 일부만 있을 경우 계산으로 보충
+        if "개선 후 T" not in df.columns and {"개선 후 빈도", "개선 후 강도"} <= set(df.columns):
+            df["개선 후 T"] = pd.to_numeric(df["개선 후 빈도"]) * pd.to_numeric(df["개선 후 강도"])
+        if "개선 후 등급" not in df.columns and "개선 후 T" in df.columns:
+            df["개선 후 등급"] = df["개선 후 T"].apply(determine_grade)
+
+        # 5) 개선대책 열이 다른 이름으로 들어온 경우 대비
         if "개선대책" not in df.columns:
             alt = [c for c in df.columns if "개선대책" in c or "Corrective" in c]
             if alt:
                 df.rename(columns={alt[0]: "개선대책"}, inplace=True)
 
-        # 5) T, 등급 계산
+        # 6) 개선 전 T, 등급 계산
         df["T"] = pd.to_numeric(df["빈도"]) * pd.to_numeric(df["강도"])
         df["등급"] = df["T"].apply(determine_grade)
 
-        # 6) 최종 열 순서 지정 (필요 시 누락된 열은 자동 제외)
+        # 7) 최종 열 순서 (없는 열은 자동 제외)
         cols = [
-            "작업활동 및 내용",
-            "유해위험요인 및 환경측면 영향",
-            "피해형태 및 환경영향",
-            "빈도",
-            "강도",
-            "T",
-            "등급",
+            # 개선 전
+            "작업활동 및 내용", "유해위험요인 및 환경측면 영향", "피해형태 및 환경영향",
+            "빈도", "강도", "T", "등급",
+            # 개선 후
+            "개선 후 빈도", "개선 후 강도", "개선 후 T", "개선 후 등급",
+            # 대책
             "개선대책"
         ]
         df = df[[c for c in cols if c in df.columns]]
 
         return df
 
+    # ───────────────────────────── 샘플 데이터 ─────────────────────────────
     except Exception as e:
         st.warning("샘플 데이터를 사용합니다 – " + str(e))
         data = {
             "작업활동 및 내용": ["Shoring Installation", "Transport"],
             "유해위험요인 및 환경측면 영향": ["Fall", "Collision"],
             "피해형태 및 환경영향": ["Injury", "Damage"],
-            "빈도": [3, 3],
-            "강도": [2, 3],
+            "빈도": [3, 3], "강도": [2, 3],
+            "개선 후 빈도": [1, 1], "개선 후 강도": [1, 2],
             "개선대책": ["Install guard rails", "Use spotter & barriers"]
         }
         df = pd.DataFrame(data)
         df["T"] = df["빈도"] * df["강도"]
         df["등급"] = df["T"].apply(determine_grade)
+        df["개선 후 T"] = df["개선 후 빈도"] * df["개선 후 강도"]
+        df["개선 후 등급"] = df["개선 후 T"].apply(determine_grade)
         return df
 
 
