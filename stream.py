@@ -5,6 +5,7 @@ import faiss
 import openai
 import re
 import os
+import io  # NEW: for Excel download
 from PIL import Image
 from sklearn.model_selection import train_test_split
 
@@ -57,6 +58,7 @@ def determine_grade(value: int) -> str:
 
 
 def load_data(name: str) -> pd.DataFrame:
+    """엑셀에서 데이터셋을 읽어 DataFrame으로 반환한다."""
     try:
         df = pd.read_excel(f"{name}.xlsx")
         if "삭제 Del" in df.columns:
@@ -94,6 +96,7 @@ def load_data(name: str) -> pd.DataFrame:
 
 
 def embed_texts(texts, api_key):
+    """주어진 텍스트 목록을 임베딩하여 리스트 반환"""
     openai.api_key = api_key
     embeddings = []
     for text in texts:
@@ -246,15 +249,21 @@ if st.button("위험성 평가 + 개선대책 생성"):
             # ------- Retrieve examples -------
             q_embed = embed_texts([work], api_key)[0]
             D, I = st.session_state.index.search(np.array([q_embed], dtype="float32"), 3)
-            examples = st.session_state.retriever_pool_df.iloc[I[0]]
+            examples = st.session_state.retriever_pool_df.iloc[I[0]].copy()
 
-            # 유사 사례 표시
+            # 유사 사례 표시 (카드 형식)
             st.markdown("<div class='sub-header'>유사 사례</div>", unsafe_allow_html=True)
             for i, row in examples.iterrows():
                 st.markdown(
                     f"<div class='similar-case'><b>#{i}</b> 작업활동: {row['작업활동 및 내용']}<br>유해위험요인: {row['유해위험요인 및 환경측면 영향']}<br>빈도: {row['빈도']} 강도: {row['강도']} T: {row['T']} 등급: {row['등급']}</div>",
                     unsafe_allow_html=True,
                 )
+
+            # 유사 사례 테이블 (NEW)
+            st.markdown("##### 유사 사례 상세 (Table)")
+            st.dataframe(examples[[
+                "작업활동 및 내용", "유해위험요인 및 환경측면 영향", "빈도", "강도", "T", "등급"
+            ]])
 
             # ------- Phase 1: Hazard -------
             h_prompt = prompt_hazard(examples, work)
@@ -306,18 +315,38 @@ if st.button("위험성 평가 + 개선대책 생성"):
             imp_sev = imp_parsed.get("개선 후 강도", 1)
             imp_t = imp_parsed.get("개선 후 T", imp_freq * imp_sev)
             rrr = imp_parsed.get("T 감소율", (t_val - imp_t) / t_val * 100)
-            st.table(
-                pd.DataFrame(
-                    {
-                        "항목": ["빈도", "강도", "T", "등급"],
-                        "개선 전": [freq, sev, t_val, grade],
-                        "개선 후": [imp_freq, imp_sev, imp_t, determine_grade(imp_t)],
-                    }
-                )
+            compare_df = pd.DataFrame(
+                {
+                    "항목": ["빈도", "강도", "T", "등급"],
+                    "개선 전": [freq, sev, t_val, grade],
+                    "개선 후": [imp_freq, imp_sev, imp_t, determine_grade(imp_t)],
+                }
             )
+            st.table(compare_df)
             st.metric("T 감소율", f"{rrr:.2f}%")
 
         st.progress(imp_t / 25)
+
+        # ----------------- 결과 Excel 다운로드 (NEW) -----------------
+        st.markdown("<div class='sub-header'>📊 결과 다운로드</div>", unsafe_allow_html=True)
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+            # 시트 1: 예측 요약
+            summary_df = pd.DataFrame({
+                "항목": ["작업활동", "예상 유해위험요인", "빈도", "강도", "T", "등급", "개선대책", "개선 후 빈도", "개선 후 강도", "개선 후 T", "T 감소율"],
+                "값": [work, hazard, freq, sev, t_val, grade, imp_parsed["개선대책"], imp_freq, imp_sev, imp_t, rrr],
+            })
+            summary_df.to_excel(writer, index=False, sheet_name="Summary")
+            # 시트 2: 유사 사례
+            examples.to_excel(writer, index=False, sheet_name="Similar Cases")
+        output.seek(0)
+
+        st.download_button(
+            label="📥 결과 Excel 다운로드",
+            data=output.getvalue(),
+            file_name="risk_assessment_result.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
 
 # ------------------------------ 로고 ------------------------------
 
