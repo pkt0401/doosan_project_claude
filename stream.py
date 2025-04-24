@@ -5,7 +5,7 @@ import json
 import os
 
 # Set page configuration for wide layout and title
-st.set_page_config(page_title="AI Risk Assessment", layout="wide")
+st.set_page_config(page_title="Artificial Intelligence Risk Assessment", layout="wide")
 
 # Mapping for language selection (display text to code)
 lang_map = {
@@ -148,7 +148,7 @@ if submitted:
             )
         # Call OpenAI API for hazard identification
         response1 = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",  # or "gpt-4" if available
+            model="gpt-4o",  # or "gpt-4" if available
             messages=[
                 {"role": "system", "content": system_msg},
                 {"role": "user", "content": user_msg}
