@@ -104,7 +104,7 @@ def calculate_similar_cases(query_embedding, embeddings, threshold=0.7):
 
 def generate_hazard_prompt(activity, similar_cases):
     """유해위험요인 생성 프롬프트"""
-    examples = "\n".join([f"작업활동: {c['작업활동']}\n유해위험요인: {c['유해위험요인']}" for c in similar_cases])
+    examples = "\n".join([f"작업활동: {c['작업활동 및 내용']}\n유해위험요인: {c['유해위험요인 및 환경측면 영향']}" for c in similar_cases])
     return f"""
     다음은 유사한 작업활동 사례입니다:
     {examples}
