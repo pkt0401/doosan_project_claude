@@ -3,13 +3,7 @@ footer_cols = st.columns([1,1])
 for path,col in zip(["cau.png","doosan.png"],footer_cols):
     if os.path.exists(path):
         col.image(Image.open(path), width=140)
-Streamlit App: Integrated AI Risk Assessment (Phase 1 + Phase 2)
-----------------------------------------------------------------
-#* Single input → full pipeline (hazard prediction ➝ risk grading ➝ improvement measures)
-#* Multilingual UI (Korean / English / Chinese)
-#* No artificial embedding‑count limits or demo warning messages
-#* Phase 2 prompt examples explicitly include the "Improvement Plan" field
-"""
+
 # ---------- Imports ----------
 import streamlit as st
 import pandas as pd
@@ -23,7 +17,6 @@ from sklearn.model_selection import train_test_split
 
 # ---------- Utility Functions ----------
 def _load_data(name:str)->pd.DataFrame:
-    """Load xlsx ↦ tidy DataFrame, compute T & grade."""
     try:
         df = pd.read_excel(f"{name}.xlsx")
         if '삭제 Del' in df.columns:
