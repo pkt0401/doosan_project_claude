@@ -18,7 +18,6 @@ system_texts = {
         "tab_phase2": "개선대책 생성 (Phase 2)",
         "overview_header": "LLM 기반 위험성평가 시스템",
         "overview_text": "두산에너빌리티 AI Risk Assessment는 국내 및 해외 건설현장 ‘수시위험성평가’ 및 ‘노동부 중대재해 사례’를 학습하여 개발된 자동 위험성평가 프로그램 입니다. 생성된 위험성평가는 반드시 수시 위험성평가 심의회를 통해 검증 후 사용하시기 바랍니다.",
-        "process_title": "AI 위험성평가 프로세스",
         "features_title": "시스템 특징 및 구성요소",
         "phase1_features": """
         #### Phase 1: 위험성 평가 자동화
@@ -98,17 +97,8 @@ system_texts = {
         "tab_phase1": "Risk Assessment (Phase 1)",
         "tab_phase2": "Improvement Measures (Phase 2)",
         "overview_header": "LLM-based Risk Assessment System",
-        "overview_text": """
-        The risk assessment automation system using LLM (Large Language Model) innovatively improves safety management at construction sites:
-        
-        1. <span class="highlight">Automatic prediction of 'hazards' and risk level calculation through generative AI</span> <span class="phase-badge">Phase 1</span>
-        2. <span class="highlight">Automatic generation of improvement measures and reduction rate prediction to reduce risk level</span> <span class="phase-badge">Phase 2</span>
-        3. AI learns existing risk assessments at construction sites by process and their hazard factors
-        4. After the development of automatic generation technology, risk analysis and improvement measures based on risk level
-        
-        This system is expected to evolve into an integrated accident prediction program through the incorporation of AI technology into EHS platforms such as PIMS and Safety Guardian.
-        """,
-        "process_title": "AI Risk Assessment Process",
+        "overview_text": "Doosan Enerbility AI Risk Assessment is an automated program trained on both on-demand risk-assessment reports from domestic and overseas construction sites and major-accident cases compiled by Korea’s Ministry of Employment and Labor.
+Please ensure that every generated assessment is reviewed and approved by the On-Demand Risk Assessment Committee before it is used.",
         "features_title": "System Features and Components",
         "phase1_features": """
         #### Phase 1: Risk Assessment Automation
@@ -188,17 +178,8 @@ system_texts = {
         "tab_phase1": "风险评估 (第1阶段)",
         "tab_phase2": "改进措施 (第2阶段)",
         "overview_header": "基于LLM的风险评估系统",
-        "overview_text": """
-        使用LLM（大型语言模型）的风险评估自动化系统创新地改善了建筑工地的安全管理：
-        
-        1. <span class="highlight">通过生成式AI自动预测"危害因素"并计算风险等级</span> <span class="phase-badge">第1阶段</span>
-        2. <span class="highlight">自动生成改进措施并预测降低风险的比率</span> <span class="phase-badge">第2阶段</span>
-        3. AI按工序学习建筑工地的现有风险评估及其危害因素
-        4. 在自动生成技术开发完成后，基于风险等级进行风险分析和改进措施生成
-        
-        该系统有望通过将AI技术整合到EHS平台（如PIMS和安全卫士）中，发展成为一个综合事故预测程序。
-        """,
-        "process_title": "AI风险评估流程",
+        "overview_text": "Doosan Enerbility AI 风险评估系统是一款自动化风险评估程序，基于国内外施工现场的“临时风险评估”数据以及韩国雇佣劳动部的重大事故案例进行训练开发而成。
+生成的风险评估结果必须经过临时风险评估审议委员会的审核后方可使用",
         "features_title": "系统特点和组件",
         "phase1_features": """
         #### 第1阶段：风险评估自动化
@@ -901,8 +882,7 @@ with tabs[0]:
     st.markdown(f'<div class="sub-header">{texts["overview_header"]}</div>', unsafe_allow_html=True)
     colA,colB=st.columns([3,2])
     with colA: st.markdown(f"<div class='info-text'>{texts['overview_text']}</div>",unsafe_allow_html=True)
-    with colB:
-        st.markdown(f"<div style='text-align:center;'><b>{texts['process_title']}</b></div>",unsafe_allow_html=True)
+
 
 # -----------------------------------------------------------------------------
 # --------------  Risk Assessment 통합 탭 --------------------------------------
