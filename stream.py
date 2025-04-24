@@ -1060,10 +1060,6 @@ with tabs[1]:
                         "T":                 doc['T'],
                         "위험등급":            doc['등급'],
                         "개선대책":            plan,
-                        "개선 후 빈도":         imp_f,
-                        "개선 후 강도":         imp_i,
-                        "개선 후 T":           imp_t,
-                        "RRR(%)":            round((doc['T']-imp_t)/doc['T']*100,2) if doc['T'] else 0
                     })
 
 
