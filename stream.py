@@ -18,14 +18,9 @@ system_texts = {
         "tab_phase2": "개선대책 생성 (Phase 2)",
         "overview_header": "LLM 기반 위험성평가 시스템",
         "overview_text": """
-        LLM(Large Language Model)을 활용한 위험성평가 자동화 시스템은 건설 현장의 안전 관리를 혁신적으로 개선합니다:
+        두산에너빌리티 AI Risk Assessment는 국내 및 해외 건설현장 ‘수시위험성평가’ 및 ‘노동부 중대재해 사례’를 학습하여 개발된 자동 위험성평가 프로그램 입니다. 생성된 위험성평가는 반드시 수시 위험성평가 심의회를 통해 검증 후 사용하시기 바랍니다. 
         
-        1. <span class="highlight">작업 내용 입력 시 생성형 AI를 통한 '유해위험요인' 자동 예측 및 위험 등급 산정</span> <span class="phase-badge">Phase 1</span>
-        2. <span class="highlight">위험도 감소를 위한 개선대책 자동 생성 및 감소율 예측</span> <span class="phase-badge">Phase 2</span>
-        3. AI는 건설현장의 기존 위험성평가를 공정별로 구분하고, 해당 유해위험요인을 학습
-        4. 자동 생성 기술 개발 완료 후 위험도 기반 사고위험성 분석 및 개선대책 생성
-        
-        이 시스템은 PIMS 및 안전지킴이 등 EHS 플랫폼에 AI 기술 탑재를 통해 통합 사고 예측 프로그램으로 발전 예정입니다.
+
         """,
         "process_title": "AI 위험성평가 프로세스",
         "process_steps": ["작업내용 입력", "AI 위험분석", "유해요인 예측", "위험등급 산정", "개선대책 자동생성", "안전조치 적용"],
