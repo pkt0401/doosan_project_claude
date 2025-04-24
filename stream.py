@@ -97,8 +97,7 @@ system_texts = {
         "tab_phase1": "Risk Assessment (Phase 1)",
         "tab_phase2": "Improvement Measures (Phase 2)",
         "overview_header": "LLM-based Risk Assessment System",
-        "overview_text": "Doosan Enerbility AI Risk Assessment is an automated program trained on both on-demand risk-assessment reports from domestic and overseas construction sites and major-accident cases compiled by Korea’s Ministry of Employment and Labor.
-Please ensure that every generated assessment is reviewed and approved by the On-Demand Risk Assessment Committee before it is used.",
+        "overview_text": "Doosan Enerbility AI Risk Assessment is an automated program trained on both on-demand risk-assessment reports from domestic and overseas construction sites and major-accident cases compiled by Korea’s Ministry of Employment and Labor. Please ensure that every generated assessment is reviewed and approved by the On-Demand Risk Assessment Committee before it is used.",
         "features_title": "System Features and Components",
         "phase1_features": """
         #### Phase 1: Risk Assessment Automation
@@ -178,8 +177,7 @@ Please ensure that every generated assessment is reviewed and approved by the On
         "tab_phase1": "风险评估 (第1阶段)",
         "tab_phase2": "改进措施 (第2阶段)",
         "overview_header": "基于LLM的风险评估系统",
-        "overview_text": "Doosan Enerbility AI 风险评估系统是一款自动化风险评估程序，基于国内外施工现场的“临时风险评估”数据以及韩国雇佣劳动部的重大事故案例进行训练开发而成。
-生成的风险评估结果必须经过临时风险评估审议委员会的审核后方可使用",
+        "overview_text": "Doosan Enerbility AI 风险评估系统是一款自动化风险评估程序，基于国内外施工现场的“临时风险评估”数据以及韩国雇佣劳动部的重大事故案例进行训练开发而成。生成的风险评估结果必须经过临时风险评估审议委员会的审核后方可使用",
         "features_title": "系统特点和组件",
         "phase1_features": """
         #### 第1阶段：风险评估自动化
