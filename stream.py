@@ -1,347 +1,265 @@
-import os
-import re
-import json
-import time
-from typing import List, Tuple, Dict
-
+"""
+Streamlit App: Integrated AI Risk Assessment (Phase 1 + Phase 2)
+----------------------------------------------------------------
+* Single input → full pipeline (hazard prediction ➝ risk grading ➝ improvement measures)
+* Multilingual UI (Korean / English / Chinese)
+* No artificial embedding‑count limits or demo warning messages
+* Phase 2 prompt examples explicitly include the “Improvement Plan” field
+"""
+# ---------- Imports ----------
 import streamlit as st
 import pandas as pd
 import numpy as np
 import faiss
 import openai
+import re
+import os
 from PIL import Image
 from sklearn.model_selection import train_test_split
-
-# -----------------------------------------------------------------------------
-# 1. LANGUAGE & UI TEXT MAPPINGS
-# -----------------------------------------------------------------------------
-FLAG = {"Korean": "🇰🇷", "English": "🇺🇸", "Chinese": "🇨🇳"}
-
-SYSTEM_TEXT = {
-    # (기존 딕셔너리에서 Overview, Labels 등 최소한만 유지)
+# ---------- Language Pack ----------
+# (trimmed to the fields referenced in the new UI; you can freely extend)
+LANG = {
     "Korean": {
-        "title": "Artificial Intelligence Risk Assessment",
-        "input_header": "작업활동 및 내용 입력",
-        "api_key_label": "OpenAI API Key 입력",
-        "run_btn": "위험성 평가 실행",
-        "embedding_msg": "임베딩 진행 중... (문서 {cur}/{total})",
+        "title": "AI 위험성평가 통합 시스템",
+        "api_key": "OpenAI API 키 입력",
+        "dataset": "데이터셋 선택",
+        "load_btn": "데이터 로드 및 인덱스 구축",
+        "loading": "데이터 로드 및 인덱스 구축 중…",
+        "loaded": "데이터 로드 및 인덱스 구축 완료! (총 {n}개)",
+        "work_input": "작업활동 입력",
+        "run_btn": "위험성 평가 및 개선대책 생성",
         "similar_cases": "유사 사례",
-        "result_header": "AI Risk Assessment 결과",
-        "improvement_header": "개선대책 및 위험도 개선",
-        "export_btn": "Excel Export",
-        "hazard_label": "예측된 유해위험요인",
-        "grade": "위험등급",
+        "prediction": "예측 결과",
+        "hazard": "예측된 유해위험요인",
+        "risk_table": ["항목", "값"],
+        "risk_rows": ["빈도", "강도", "T 값", "등급"],
+        "improvement_header": "개선대책",
+        "risk_change": "위험도(T) 변화",
+        "before": "개선 전 T값",
+        "after": "개선 후 T값",
+        "rrr": "위험 감소율 (RRR)",
+        "api_warn": "API 키를 입력하세요.",
+        "load_warn": "먼저 데이터셋을 로드하세요.",
+        "input_warn": "작업활동을 입력하세요.",
     },
     "English": {
-        "title": "Artificial Intelligence Risk Assessment",
-        "input_header": "Work activity",
-        "api_key_label": "OpenAI API Key",
-        "run_btn": "Run Assessment",
-        "embedding_msg": "Embedding documents... ({cur}/{total})",
-        "similar_cases": "Similar cases",
-        "result_header": "AI Risk Assessment Results",
-        "improvement_header": "Improvement Plan & Risk Mitigation",
-        "export_btn": "Excel Export",
-        "hazard_label": "Predicted hazard",
-        "grade": "Risk grade",
+        "title": "AI Risk‑Assessment Integrated System",
+        "api_key": "Enter OpenAI API Key",
+        "dataset": "Select Dataset",
+        "load_btn": "Load Data & Build Index",
+        "loading": "Loading data & building index…",
+        "loaded": "Data loaded & index built! (total {n})",
+        "work_input": "Work Activity",
+        "run_btn": "Run Risk‑Assessment & Improvement",
+        "similar_cases": "Similar Cases",
+        "prediction": "Prediction Result",
+        "hazard": "Predicted Hazard",
+        "risk_table": ["Item", "Value"],
+        "risk_rows": ["Frequency", "Intensity", "T Value", "Grade"],
+        "improvement_header": "Improvement Plan",
+        "risk_change": "T‑value Change",
+        "before": "T‑value Before",
+        "after": "T‑value After",
+        "rrr": "Risk Reduction Rate (RRR)",
+        "api_warn": "Please enter an API key.",
+        "load_warn": "Load a dataset first.",
+        "input_warn": "Please enter a work activity.",
     },
     "Chinese": {
-        "title": "Artificial Intelligence Risk Assessment",
-        "input_header": "工作活动",
-        "api_key_label": "OpenAI API 密钥",
-        "run_btn": "开始评估",
-        "embedding_msg": "正在生成嵌入... ({cur}/{total})",
+        "title": "AI风险评估一体化系统",
+        "api_key": "输入 OpenAI API 密钥",
+        "dataset": "选择数据集",
+        "load_btn": "加载数据并建立索引",
+        "loading": "数据加载与索引构建中…",
+        "loaded": "数据加载与索引构建完成！（共 {n} 条）",
+        "work_input": "工作活动",
+        "run_btn": "执行风险评估与改进",
         "similar_cases": "相似案例",
-        "result_header": "AI 风险评估结果",
-        "improvement_header": "改进措施与风险降低",
-        "export_btn": "Excel 导出",
-        "hazard_label": "预测的危害",
-        "grade": "风险等级",
+        "prediction": "预测结果",
+        "hazard": "预测危害",
+        "risk_table": ["项目", "值"],
+        "risk_rows": ["频率", "强度", "T 值", "等级"],
+        "improvement_header": "改进措施",
+        "risk_change": "T 值变化",
+        "before": "改进前 T 值",
+        "after": "改进后 T 值",
+        "rrr": "风险降低率 (RRR)",
+        "api_warn": "请输入 API 密钥。",
+        "load_warn": "请先加载数据集。",
+        "input_warn": "请输入工作活动。",
     },
 }
-
-# -----------------------------------------------------------------------------
-# 2. PAGE CONFIG & GLOBAL SESSION STATE
-# -----------------------------------------------------------------------------
-st.set_page_config(page_title="AI Risk Assessment", page_icon="🛠️", layout="wide")
-
-if "lang" not in st.session_state:
-    st.session_state.lang = "Korean"
-if "faiss_index" not in st.session_state:
-    st.session_state.faiss_index = None
-if "retriever_df" not in st.session_state:
-    st.session_state.retriever_df = None
-if "embeddings" not in st.session_state:
-    st.session_state.embeddings = None
-if "last_result" not in st.session_state:
-    st.session_state.last_result = None
-
-# -----------------------------------------------------------------------------
-# 3. TOP BAR  (Language selector + Flags)
-# -----------------------------------------------------------------------------
-
-# We draw the top bar using columns so that the language dropdown sticks to the right.
-bar_col1, bar_col2 = st.columns([8, 1])
-with bar_col2:
-    choice = st.selectbox("Language", options=list(SYSTEM_TEXT.keys()),
-                          format_func=lambda x: f"{FLAG[x]}  {x}",
-                          index=list(SYSTEM_TEXT.keys()).index(st.session_state.lang))
-    st.session_state.lang = choice
-TXT = SYSTEM_TEXT[st.session_state.lang]
-
-# -----------------------------------------------------------------------------
-# 4. HEADER
-# -----------------------------------------------------------------------------
-st.markdown(f"<h1 style='text-align:center;color:#1565C0;margin-bottom:0.2em'>{TXT['title']}</h1>", unsafe_allow_html=True)
-
-# Logos (좌측: 두산 / 우측: 중앙대)
-logo_col1, _, logo_col2 = st.columns([1, 8, 1])
-with logo_col1:
-    if os.path.exists("doosan.png"):
-        st.image("doosan.png", width=120)
-with logo_col2:
-    if os.path.exists("cau.png"):
-        st.image("cau.png", width=90)
-
-# -----------------------------------------------------------------------------
-# 5. SIDEBAR  (Input controls)
-# -----------------------------------------------------------------------------
+# ---------- Page Config ----------
+st.set_page_config("AI Risk Assessment", ":망치와_렌치:", layout="wide")
+# ---------- Style ----------
+st.markdown(
+    """
+    <style>
+        .title {font-size:2.2rem;font-weight:700;text-align:center;color:#0d47a1;margin:0 0 1rem 0}
+        .box {background:#f8f9fa;border-radius:10px;padding:15px;margin:1rem 0;border-left:5px solid #1E88E5}
+        .similar-case{background:#f1f8e9;border-left:4px solid #689F38;border-radius:8px;padding:10px;margin-bottom:6px}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+# ---------- Session State ----------
+ss = st.session_state
+for key, default in {
+    "lang": "Korean", "index": None, "df": None, "api_key": ""}.items():
+    ss.setdefault(key, default)
+# ---------- Sidebar Controls ----------
 with st.sidebar:
-    st.header(FLAG[st.session_state.lang] + "  " + TXT["input_header"])
-    api_key = st.text_input(TXT["api_key_label"], type="password")
-    user_activity = st.text_area("", height=120)
-    run = st.button(TXT["run_btn"], use_container_width=True)
-
-# -----------------------------------------------------------------------------
-# 6. DATA LOADING & EMBEDDING UTILS
-# -----------------------------------------------------------------------------
-
-def determine_grade(t: int, lang: str) -> str:
-    if 16 <= t <= 25:
-        return "A"
-    if 10 <= t <= 15:
-        return "B"
-    if 5 <= t <= 9:
-        return "C"
-    if 3 <= t <= 4:
-        return "D"
-    if 1 <= t <= 2:
-        return "E"
-    return "Unknown" if lang != "Korean" else "알 수 없음"
-
-@st.cache_data(show_spinner=False)
-def load_dataset() -> pd.DataFrame:
-    """Load Excel or fallback sample."""
-    try:
-        df = pd.read_excel("Civil (토목).xlsx")  # 실제 파일명
-        if "삭제 Del" in df.columns:
-            df = df.drop(["삭제 Del"], axis=1)
-        df = df.iloc[1:]
-        df = df.rename(columns={df.columns[4]: "빈도", df.columns[5]: "강도", df.columns[6]: "T"})
-        df["T"] = pd.to_numeric(df["빈도"]) * pd.to_numeric(df["강도"])
-        df["등급"] = df["T"].apply(lambda x: determine_grade(int(x), "Korean"))
-        return df
-    except Exception:
-        # Minimal sample – production should replace with real file.
-        _samp = {
-            "작업활동 및 내용": ["Lifting operation", "Excavation work"],
-            "유해위험요인 및 환경측면 영향": ["Material fall", "Wall collapse"],
-            "피해형태 및 환경영향": ["Injury", "Injury"],
-            "빈도": [3, 4],
-            "강도": [4, 4],
-        }
-        df = pd.DataFrame(_samp)
-        df["T"] = df["빈도"] * df["강도"]
-        df["등급"] = df["T"].apply(lambda x: determine_grade(int(x), "Korean"))
-        return df
-
-def build_embeddings(df: pd.DataFrame, api_key: str) -> Tuple[faiss.IndexFlatL2, np.ndarray]:
-    """Embed full dataset and return a FAISS index."""
-    openai.api_key = api_key
-    contents = df.apply(lambda r: " ".join(r.astype(str)), axis=1).tolist()
-    embeddings: List[List[float]] = []
-    pb = st.progress(0, text=TXT["embedding_msg"].format(cur=0, total=len(contents)))
-    for idx, text in enumerate(contents, 1):
-        try:
-            resp = openai.Embedding.create(model="text-embedding-3-large", input=[text])
-            embeddings.append(resp["data"][0]["embedding"])
-        except Exception as e:
-            st.error(f"Embedding error @ row {idx}: {e}")
-            embeddings.append([0.0] * 1536)
-        pb.progress(idx / len(contents), text=TXT["embedding_msg"].format(cur=idx, total=len(contents)))
-    emb_arr = np.array(embeddings, dtype="float32")
-    idx = faiss.IndexFlatL2(emb_arr.shape[1])
-    idx.add(emb_arr)
-    return idx, emb_arr
-
-# -----------------------------------------------------------------------------
-# 7. GPT HELPERS
-# -----------------------------------------------------------------------------
-
-def gpt_chat(prompt: str, api_key: str, lang: str, max_tokens: int = 256) -> str:
-    openai.api_key = api_key
-    system = {
-        "Korean": "당신은 건설 안전 전문가입니다. 모든 답변은 한국어로, 공학적 수치를 포함한 구체적 지침을 제공합니다.",
-        "English": "You are a construction safety expert. Answer in English with engineering‑level, quantitative guidance.",
-        "Chinese": "你是一名建筑安全专家。请用中文回答，并给出具有工程量化指标的具体措施。",
-    }[lang]
-    resp = openai.ChatCompletion.create(
-        model="gpt-4o", temperature=0.0, max_tokens=max_tokens,
-        messages=[{"role": "system", "content": system}, {"role": "user", "content": prompt}],
-    )
-    return resp["choices"][0]["message"]["content"].strip()
-
-# -----------------------------------------------------------------------------
-# 8. PROMPT BUILDERS  (Hazard + Risk + Improvement)
-# -----------------------------------------------------------------------------
-
-def prompt_hazard(examples: pd.DataFrame, activity: str, lang: str) -> str:
-    intro = {
-        "Korean": "다음은 작업활동과 유해위험요인 예시입니다:\n\n",
-        "English": "Examples of work activities and hazards:\n\n",
-        "Chinese": "以下是工作活动及危害示例：\n\n",
-    }[lang]
-    fmt = {
-        "Korean": "예시 {i}: 작업활동: {a}\n유해위험요인: {h}\n\n",
-        "English": "Example {i}: Activity: {a}\nHazard: {h}\n\n",
-        "Chinese": "示例 {i}: 工作活动: {a}\n危害: {h}\n\n",
-    }[lang]
-    q = {
-        "Korean": "다음 작업활동의 유해위험요인을 구체적으로 예측하십시오:\n작업활동: {act}\n유해위험요인:",
-        "English": "Predict the specific hazard for the following activity:\nActivity: {act}\nHazard:",
-        "Chinese": "请预测以下工作活动的具体危害：\n工作活动: {act}\n危害:",
-    }[lang]
-    prompt = intro
-    for i, row in enumerate(examples.itertuples(), 1):
-        prompt += fmt.format(i=i, a=row._1, h=row._2)
-    prompt += q.format(act=activity)
-    return prompt
-
-def prompt_risk(examples: pd.DataFrame, activity: str, hazard: str, lang: str) -> str:
-    json_tpl = {
-        "Korean": "{\"빈도\": 숫자, \"강도\": 숫자, \"T\": 숫자}",
-        "English": "{\"frequency\": number, \"intensity\": number, \"T\": number}",
-        "Chinese": "{\"频率\": 数字, \"强度\": 数字, \"T\": 数字}",
-    }[lang]
-    fmt_ex = {
-        "Korean": "예시 {i}: 입력: {inp}\n출력: {out}\n\n",
-        "English": "Example {i}: Input: {inp}\nOutput: {out}\n\n",
-        "Chinese": "示例 {i}: 输入: {inp}\n输出: {out}\n\n",
-    }[lang]
-    prompt = ""
-    for i, row in enumerate(examples.itertuples(), 1):
-        inp = f"{row._1} - {row._2}"
-        out = f"{{\"빈도\": {row.빈도}, \"강도\": {row.강도}, \"T\": {row.T}}}"
-        prompt += fmt_ex.format(i=i, inp=inp, out=out)
-    q = {
-        "Korean": "입력: {a} - {h}\n위 입력을 바탕으로 빈도·강도·T를 예측하고 다음 형식(JSON)으로 출력하세요:\n{tpl}\n출력:",
-        "English": "Input: {a} - {h}\nPredict frequency, intensity, and T then output JSON:\n{tpl}\nOutput:",
-        "Chinese": "输入: {a} - {h}\n预测频率、强度、T 并以 JSON 输出：\n{tpl}\n输出:",
-    }[lang]
-    prompt += q.format(a=activity, h=hazard, tpl=json_tpl)
-    return prompt
-
-def prompt_improvement(examples: pd.DataFrame, activity: str, hazard: str, f: int, i_: int, t: int, lang: str) -> str:
-    # Only 2 examples to keep tokens low
-    def _json(freq_b, int_b, plan):
-        return f"{{\"개선대책\": \"{plan}\", \"개선 후 빈도\": 1, \"개선 후 강도\": 2, \"개선 후 T\": 2, \"T 감소율\": 80.0}}"
-
-    examples_txt = ""
-    for k, row in examples.head(2).iterrows():
-        examples_txt += (
-            f"Example:\nInput: {row['작업활동 및 내용']} / {row['유해위험요인 및 환경측면 영향']} / F={row['빈도']} / I={row['강도']} / T={row['T']}\n"
-            f"Output(JSON): {_json(row['빈도'], row['강도'], '작업 구역 3m 앞 펜스 설치 등')}\n\n"
-        )
-    body = (
-        f"Now provide a **specific, engineering‑level improvement plan** for the new input and quantify risk reduction.\n"
-        f"Input: {activity} / {hazard} / F={f} / I={i_} / T={t}\n"
-        f"Return **only valid JSON** with keys: 개선대책, 개선 후 빈도, 개선 후 강도, 개선 후 T, T 감소율."
-    )
-    return examples_txt + body
-
-# -----------------------------------------------------------------------------
-# 9. MAIN RUN BLOCK
-# -----------------------------------------------------------------------------
-if run and user_activity and api_key:
-
-    # 9‑1. Load & embed dataset (cached on api_key)
-    dataset_df = load_dataset()
-    if st.session_state.faiss_index is None:
-        with st.spinner("Preparing embeddings ..."):
-            idx, emb_arr = build_embeddings(dataset_df, api_key)
-            st.session_state.faiss_index = idx
-            st.session_state.retriever_df = dataset_df
-            st.session_state.embeddings = emb_arr
+    ss.lang = st.selectbox("Language / 언어", list(LANG.keys()), index=list(LANG).index(ss.lang))
+    txt = LANG[ss.lang]
+    st.title(txt["title"])
+    ss.api_key = st.text_input(txt["api_key"], type="password", value=ss.api_key)
+    dataset_name = st.selectbox(txt["dataset"], [
+        "SWRO 건축공정 (건축)", "Civil (토목)", "Marine (토목)",
+        "SWRO 기계공사 (플랜트)", "SWRO 전기작업표준 (플랜트)"], key="ds")
+    if st.button(txt["load_btn"], key="load"):
+        if not ss.api_key:
+            st.warning(txt["api_warn"])
+        else:
+            with st.spinner(txt["loading"]):
+                ss.df = _load_data(dataset_name)  # function defined later
+                ss.index = _build_index(ss.df, ss.api_key)  # function defined later
+            st.success(txt["loaded"].format(n=len(ss.df)))
+# ---------- Main Layout ----------
+st.markdown(f"<p class='title'>{txt['title']}</p>", unsafe_allow_html=True)
+work_activity = st.text_input(txt["work_input"], key="work")
+run = st.button(txt["run_btn"], key="run")
+# ---------- Helper: Grade ----------
+GRADE = [(16,25,'A'),(10,15,'B'),(5,9,'C'),(3,4,'D'),(1,2,'E')]
+def grade(t):
+    for lo,hi,g in GRADE:
+        if lo<=t<=hi: return g
+    return "?"
+# ---------- Run Pipeline ----------
+if run:
+    if not ss.api_key:
+        st.warning(txt["api_warn"])
+    elif ss.index is None:
+        st.warning(txt["load_warn"])
+    elif not work_activity:
+        st.warning(txt["input_warn"])
     else:
-        idx = st.session_state.faiss_index
-        dataset_df = st.session_state.retriever_df
-
-    # 9‑2. Retrieve top‑3 similar rows
-    openai.api_key = api_key
-    q_emb = openai.Embedding.create(model="text-embedding-3-large", input=[user_activity])["data"][0]["embedding"]
-    D, I = idx.search(np.array([q_emb], dtype="float32"), 3)
-    retrieved = dataset_df.iloc[I[0]]
-
-    # 9‑3. HAZARD prediction
-    haz_prompt = prompt_hazard(retrieved[["작업활동 및 내용", "유해위험요인 및 환경측면 영향"]], user_activity, st.session_state.lang)
-    hazard = gpt_chat(haz_prompt, api_key, st.session_state.lang, 120)
-
-    # 9‑4. RISK numbers
-    risk_prompt = prompt_risk(retrieved[["작업활동 및 내용", "유해위험요인 및 환경측면 영향", "빈도", "강도", "T"]],
-                              user_activity, hazard, st.session_state.lang)
-    risk_json = gpt_chat(risk_prompt, api_key, st.session_state.lang, 120)
-    match = re.search(r"([1-5]).*?([1-5]).*?(\d+)", risk_json)
-    freq = int(match.group(1)) if match else 3
-    inten = int(match.group(2)) if match else 3
-    t_val = int(match.group(3)) if match else freq * inten
-    grade = determine_grade(t_val, st.session_state.lang)
-
-    # 9‑5. IMPROVEMENT plan
-    imp_prompt = prompt_improvement(retrieved, user_activity, hazard, freq, inten, t_val, st.session_state.lang)
-    imp_json_raw = gpt_chat(imp_prompt, api_key, st.session_state.lang, 200)
+        openai.api_key = ss.api_key
+        # 1) Retrieve similar examples
+        query_emb = _embed([work_activity], ss.api_key)[0]  # helper
+        D,I = ss.index.search(np.array([query_emb], dtype='float32'), min(3,len(ss.df)))
+        sims = ss.df.iloc[I[0]]
+        # show similar cases
+        st.subheader(txt["similar_cases"])
+        for i,row in sims.iterrows():
+            st.markdown(
+                f"<div class='similar-case'><b>#{i}</b><br>작업활동: {row['작업활동 및 내용']}<br>유해위험요인: {row['유해위험요인 및 환경측면 영향']}<br>위험도: {row['T']} (빈도 {row['빈도']}, 강도 {row['강도']}, 등급 {row['등급']})</div>",
+                unsafe_allow_html=True)
+        # 2) Phase‑1 prompts
+        hz_prompt = _prompt_hazard(sims, work_activity)  # helper
+        hazard = _ask_gpt(hz_prompt, ss.api_key)
+        risk_prompt = _prompt_risk(sims, work_activity, hazard)  # helper
+        risk_raw = _ask_gpt(risk_prompt, ss.api_key)
+        freq,intensity,T = _parse_risk(risk_raw)
+        # 3) Display Phase‑1 outputs
+        st.subheader(txt["prediction"])
+        st.write(f"**{txt['hazard']}**: {hazard}")
+        st.table(pd.DataFrame({txt['risk_table'][0]:txt['risk_rows'],
+                              txt['risk_table'][1]:[freq,intensity,T,grade(T)]}))
+        # 4) Phase‑2 prompt & answer
+        imp_prompt = _prompt_improve(sims, work_activity, hazard, freq, intensity, T)  # helper
+        imp_raw = _ask_gpt(imp_prompt, ss.api_key)
+        imp_parsed = _parse_improve(imp_raw)
+        imp_plan = imp_parsed.get("plan","-")
+        newF,newI,newT = imp_parsed.get("f",1),imp_parsed.get("i",1),imp_parsed.get("t",1)
+        rrr = imp_parsed.get("rrr", (T-newT)/T*100 if T else 0)
+        # 5) Display Phase‑2 outputs
+        st.subheader(txt['improvement_header'])
+        st.markdown(f"<div class='box'>{imp_plan}</div>", unsafe_allow_html=True)
+        col1,col2 = st.columns(2)
+        col1.metric(txt['before'], T)
+        col2.metric(txt['after'], newT, delta=f"{rrr:.1f}%")
+# ---------- Utility Functions ----------
+def _load_data(name:str)->pd.DataFrame:
+    """Load xlsx ↦ tidy DataFrame, compute T & grade."""
     try:
-        imp_data = json.loads(re.sub("```[a-z]*", "", imp_json_raw))
-    except Exception:
-        imp_data = {}
-    imp_plan = imp_data.get("개선대책", imp_json_raw)
-    imp_freq = imp_data.get("개선 후 빈도", 1)
-    imp_inten = imp_data.get("개선 후 강도", 2)
-    imp_t = imp_data.get("개선 후 T", imp_freq * imp_inten)
-    imp_rrr = imp_data.get("T 감소율", round((t_val - imp_t) * 100 / t_val, 2))
-
-    # 9‑6. DISPLAY RESULTS ------------------------------------------------------
-    st.markdown("## " + TXT["result_header"])
-
-    # risk table fixed width, scrollable rows
-    st.write("### AI Risk Assessment")
-    assess_df = pd.DataFrame({
-        "작업활동": [user_activity],
-        "유해위험요인": [hazard],
-        "빈도": [freq],
-        "강도": [inten],
-        "T": [t_val],
-        TXT["grade"]: [grade],
-    })
-    st.dataframe(assess_df, use_container_width=True)
-
-    # improvement
-    st.write("### " + TXT["improvement_header"])
-    imp_df = pd.DataFrame({
-        "항목": ["빈도", "강도", "T"],
-        "개선 전": [freq, inten, t_val],
-        "개선 후": [imp_freq, imp_inten, imp_t],
-    })
-    st.dataframe(imp_df, use_container_width=True)
-    st.success(f"**RRR:** {imp_rrr}%")
-    st.markdown(f"**개선대책:**\n{imp_plan}")
-
-    # similar cases
-    st.write("### " + TXT["similar_cases"])
-    st.dataframe(retrieved[["작업활동 및 내용", "유해위험요인 및 환경측면 영향", "T", "등급"]], height=180)
-
-    st.session_state.last_result = {
-        "assessment": assess_df,
-        "improvement": imp_df,
+        df = pd.read_excel(f"{name}.xlsx")
+        if '삭제 Del' in df.columns:
+            df = df.drop(['삭제 Del'], axis=1)
+        df = df.iloc[1:]
+        df = df.rename(columns={df.columns[4]:'빈도', df.columns[5]:'강도', df.columns[6]:'T'})
+        df['T'] = pd.to_numeric(df['빈도'])*pd.to_numeric(df['강도'])
+        df['등급'] = df['T'].apply(grade)
+        df['content'] = df.apply(lambda r:' '.join(r.astype(str)), axis=1)
+        return df.reset_index(drop=True)
+    except Exception as e:
+        st.error(f"데이터 로드 오류: {e}")
+        # fallback dummy
+        data={"작업활동 및 내용":["Excavation"],"유해위험요인 및 환경측면 영향":["Collapse"],"빈도":[3],"강도":[4]}
+        df=pd.DataFrame(data)
+        df['T']=df['빈도']*df['강도'];df['등급']=df['T'].apply(grade);df['content']=df.apply(lambda r:' '.join(r.astype(str)),axis=1)
+        return df
+def _embed(texts,list_api_key):
+    openai.api_key=list_api_key
+    embs=[]
+    for t in texts:
+        r=openai.Embedding.create(model="text-embedding-3-large",input=[t.replace("\n"," ")])
+        embs.append(r['data'][0]['embedding'])
+    return embs
+def _build_index(df, api_key):
+    embs=_embed(df['content'].tolist(), api_key)
+    arr=np.array(embs, dtype='float32')
+    index=faiss.IndexFlatL2(arr.shape[1])
+    index.add(arr)
+    return index
+# ----- Prompt builders & parsers (simplified) -----
+def _prompt_hazard(docs, activity):
+    examples="".join([
+        f"예시 {i+1}:\n작업활동: {r['작업활동 및 내용']}\n유해위험요인: {r['유해위험요인 및 환경측면 영향']}\n\n"
+        for i,(_,r) in enumerate(docs.iterrows()) ])
+    return f"""다음은 건설현장 작업활동과 유해위험요인 예시입니다.\n\n{examples}다음 작업활동의 유해위험요인을 예측하세요:\n작업활동: {activity}\n유해위험요인:"""
+def _prompt_risk(docs, activity, hazard):
+    examples="".join([
+        f"예시 {i+1}:\n입력: {r['작업활동 및 내용']} - {r['유해위험요인 및 환경측면 영향']}\n출력: {{\"빈도\": {r['빈도']}, \"강도\": {r['강도']}, \"T\": {r['T']}}}\n\n"
+        for i,(_,r) in enumerate(docs.iterrows()) ])
+    return f"""{examples}입력: {activity} - {hazard}\n빈도와 강도를 1~5 정수로 예측하고 JSON으로 출력: {{\"빈도\": n, \"강도\": n, \"T\": n}}\n출력:"""
+def _prompt_improve(docs, activity, hazard, f, i, t):
+    # Include improvement plan in examples
+    examples="""
+Example:
+Input (Activity): Excavation
+Input (Hazard): Wall collapse
+Input (Original F/I/T): 3/4/12
+Output (Improvement) JSON:
+{"""+"\n  \"개선대책\": \"1) 토양 경사 준수 2) 지보공 설치 3) 점검\",\n  \"개선 후 빈도\": 1,\n  \"개선 후 강도\": 2,\n  \"개선 후 T\": 2,\n  \"T 감소율\": 83.33\n}"""
+    return f"""{examples}\n새로운 입력:\nInput (Activity): {activity}\nInput (Hazard): {hazard}\nInput (Original F/I/T): {f}/{i}/{t}\nJSON key: 개선대책, 개선 후 빈도, 개선 후 강도, 개선 후 T, T 감소율\n번호 매긴 개선대책을 한국어로 3개 이상 포함하고 올바른 JSON만 출력하세요.\n출력:"""
+def _ask_gpt(prompt, api_key, model="gpt-4o"):
+    openai.api_key=api_key
+    res=openai.ChatCompletion.create(model=model,temperature=0, messages=[{"role":"user","content":prompt}])
+    return res['choices'][0]['message']['content']
+def _parse_risk(txt):
+    m=re.search(r'\{"빈도"\s*:\s*(\d),\s*"강도"\s*:\s*(\d),\s*"T"\s*:\s*(\d+)\}',txt)
+    return (int(m.group(1)),int(m.group(2)),int(m.group(3))) if m else (3,3,9)
+def _parse_improve(txt):
+    try:
+        j=re.search(r'\{.*\}',txt,re.S).group()
+        data=pd.json.loads(j)
+    except:
+        data={}
+    return {
+        "plan": data.get("개선대책",""),
+        "f": data.get("개선 후 빈도",1),
+        "i": data.get("개선 후 강도",1),
+        "t": data.get("개선 후 T",1),
+        "rrr": data.get("T 감소율",0),
     }
-else:
-    st.info("⬅️  사이드바에 API Key와 작업활동을 입력 후 **Run** 을 누르세요.")
+# ---------- Footer ----------
+footer_cols = st.columns([1,1])
+for path,col in zip(["cau.png","doosan.png"],footer_cols):
+    if os.path.exists(path):
+        col.image(Image.open(path), width=140)
+
+
+
+
+
+
