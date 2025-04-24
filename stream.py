@@ -1,5 +1,11 @@
-
-
+"""
+Streamlit App: Integrated AI Risk Assessment (Phase 1 + Phase 2)
+----------------------------------------------------------------
+* Single input → full pipeline (hazard prediction ➝ risk grading ➝ improvement measures)
+* Multilingual UI (Korean / English / Chinese)
+* No artificial embedding‑count limits or demo warning messages
+* Phase 2 prompt examples explicitly include the "Improvement Plan" field
+"""
 # ---------- Imports ----------
 import streamlit as st
 import pandas as pd
@@ -8,17 +14,25 @@ import faiss
 import openai
 import re
 import os
+import io
+from datetime import datetime
 from PIL import Image
 from sklearn.model_selection import train_test_split
 
-# ---------- Footer ----------
-footer_cols = st.columns([1,1])
-for path,col in zip(["cau.png","doosan.png"],footer_cols):
-    if os.path.exists(path):
-        col.image(Image.open(path), width=140)
+# ---------- Page Config ----------
+# Streamlit 페이지 설정은 가장 먼저 호출되어야 함
+st.set_page_config("AI Risk Assessment", ":망치와_렌치:", layout="wide")
+
+# ---------- Helper: Grade ----------
+GRADE = [(16,25,'A'),(10,15,'B'),(5,9,'C'),(3,4,'D'),(1,2,'E')]
+def grade(t):
+    for lo,hi,g in GRADE:
+        if lo<=t<=hi: return g
+    return "?"
 
 # ---------- Utility Functions ----------
 def _load_data(name:str)->pd.DataFrame:
+    """Load xlsx ↦ tidy DataFrame, compute T & grade."""
     try:
         df = pd.read_excel(f"{name}.xlsx")
         if '삭제 Del' in df.columns:
@@ -137,12 +151,44 @@ def _parse_improve(txt):
         "rrr": data.get("T 감소율",0),
     }
 
-# ---------- Helper: Grade ----------
-GRADE = [(16,25,'A'),(10,15,'B'),(5,9,'C'),(3,4,'D'),(1,2,'E')]
-def grade(t):
-    for lo,hi,g in GRADE:
-        if lo<=t<=hi: return g
-    return "?"
+# Excel 다운로드 기능 추가
+def create_excel_download_link(df, filename):
+    """Excel 다운로드 링크 생성"""
+    output = io.BytesIO()
+    writer = pd.ExcelWriter(output, engine='xlsxwriter')
+    df.to_excel(writer, index=False, sheet_name='Sheet1')
+    writer.close()
+    output.seek(0)
+    return output.getvalue()
+
+# 결과 저장 함수 추가
+def save_risk_assessment_result(activity, hazard, freq, intensity, t_value, grade_val, imp_plan, newF, newI, newT, rrr):
+    """위험성 평가 결과를 DataFrame으로 저장"""
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    data = {
+        "평가일시": [now],
+        "작업활동": [activity],
+        "유해위험요인": [hazard],
+        "위험성 평가 전": [{
+            "빈도": freq,
+            "강도": intensity,
+            "T값": t_value,
+            "등급": grade_val
+        }],
+        "개선대책": [imp_plan],
+        "위험성 평가 후": [{
+            "빈도": newF,
+            "강도": newI,
+            "T값": newT,
+            "등급": grade(newT)
+        }],
+        "감소율(%)": [f"{rrr:.1f}"]
+    }
+    
+    # 결과 DataFrame 생성
+    result_df = pd.DataFrame(data)
+    return result_df
 
 # ---------- Language Pack ----------
 # (trimmed to the fields referenced in the new UI; you can freely extend)
@@ -224,9 +270,6 @@ LANG = {
     },
 }
 
-# ---------- Page Config ----------
-st.set_page_config("AI Risk Assessment", ":망치와_렌치:", layout="wide")
-
 # ---------- Style ----------
 st.markdown(
     """
@@ -259,8 +302,8 @@ with st.sidebar:
             st.warning(txt["api_warn"])
         else:
             with st.spinner(txt["loading"]):
-                ss.df = _load_data(dataset_name)  # function defined earlier now
-                ss.index = _build_index(ss.df, ss.api_key)  # function defined earlier now
+                ss.df = _load_data(dataset_name)
+                ss.index = _build_index(ss.df, ss.api_key)
             st.success(txt["loaded"].format(n=len(ss.df)))
 
 # ---------- Main Layout ----------
@@ -338,98 +381,10 @@ if run:
             data=excel_data,
             file_name=f"risk_assessment_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        ).get("t",1)
-        rrr = imp_parsed.get("rrr", (T-newT)/T*100 if T else 0)
-        # 5) Display Phase‑2 outputs
-        st.subheader(txt['improvement_header'])
-        st.markdown(f"<div class='box'>{imp_plan}</div>", unsafe_allow_html=True)
-        col1,col2 = st.columns(2)
-        col1.metric(txt['before'], T)
-        col2.metric(txt['after'], newT, delta=f"{rrr:.1f}%")
-        
-        # 6) 결과를 Excel로 저장 및 다운로드 제공
-        result_df = save_risk_assessment_result(
-            work_activity, hazard, freq, intensity, T, grade(T), 
-            imp_plan, newF, newI, newT, rrr
-        )
-        
-        # 결과 테이블 표시
-        st.subheader(txt["result_summary"])
-        st.dataframe(result_df)
-        
-        # Excel 다운로드 버튼
-        excel_data = create_excel_download_link(result_df, "risk_assessment_result.xlsx")
-        st.download_button(
-            label=txt["download_btn"],
-            data=excel_data,
-            file_name=f"risk_assessment_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        ).get("t",1)
-        rrr = imp_parsed.get("rrr", (T-newT)/T*100 if T else 0)
-        # 5) Display Phase‑2 outputs
-        st.subheader(txt['improvement_header'])
-        st.markdown(f"<div class='box'>{imp_plan}</div>", unsafe_allow_html=True)
-        col1,col2 = st.columns(2)
-        col1.metric(txt['before'], T)
-        col2.metric(txt['after'], newT, delta=f"{rrr:.1f}%")
-        
-        # 6) 결과를 Excel로 저장 및 다운로드 제공
-        result_df = save_risk_assessment_result(
-            work_activity, hazard, freq, intensity, T, grade(T), 
-            imp_plan, newF, newI, newT, rrr
-        )
-        
-        # 결과 테이블 표시
-        st.subheader("평가 결과 요약")
-        st.dataframe(result_df)
-        
-        # Excel 다운로드 버튼
-        excel_data = create_excel_download_link(result_df, "risk_assessment_result.xlsx")
-        st.download_button(
-            label="Excel로 다운로드",
-            data=excel_data,
-            file_name=f"risk_assessment_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
 
-# Excel 다운로드 기능 추가
-import io
-from datetime import datetime
-
-def create_excel_download_link(df, filename):
-    """Excel 다운로드 링크 생성"""
-    output = io.BytesIO()
-    writer = pd.ExcelWriter(output, engine='xlsxwriter')
-    df.to_excel(writer, index=False, sheet_name='Sheet1')
-    writer.close()
-    output.seek(0)
-    return output.getvalue()
-
-# 결과 저장 함수 추가
-def save_risk_assessment_result(activity, hazard, freq, intensity, t_value, grade_val, imp_plan, newF, newI, newT, rrr):
-    """위험성 평가 결과를 DataFrame으로 저장"""
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
-    data = {
-        "평가일시": [now],
-        "작업활동": [activity],
-        "유해위험요인": [hazard],
-        "위험성 평가 전": [{
-            "빈도": freq,
-            "강도": intensity,
-            "T값": t_value,
-            "등급": grade_val
-        }],
-        "개선대책": [imp_plan],
-        "위험성 평가 후": [{
-            "빈도": newF,
-            "강도": newI,
-            "T값": newT,
-            "등급": grade(newT)
-        }],
-        "감소율(%)": [f"{rrr:.1f}"]
-    }
-    
-    # 결과 DataFrame 생성
-    result_df = pd.DataFrame(data)
-    return result_df
+# ---------- Footer ----------
+footer_cols = st.columns([1,1])
+for path,col in zip(["cau.png","doosan.png"],footer_cols):
+    if os.path.exists(path):
+        col.image(Image.open(path), width=140)
