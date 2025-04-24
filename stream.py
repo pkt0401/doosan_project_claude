@@ -220,7 +220,7 @@ if st.button("데이터 불러오기 및 인덱스 구축"):
             train_df, _ = train_test_split(df, test_size=0.1, random_state=42)
             pool_df = train_df.copy()
             pool_df["content"] = pool_df.apply(lambda r: " ".join(r.values.astype(str)), axis=1)
-            texts = pool_df["content"].tolist()[:10]
+            texts = pool_df["content"].tolist()
             embeds = embed_texts(texts, api_key)
             embeds_np = np.array(embeds, dtype="float32")
             idx = faiss.IndexFlatL2(embeds_np.shape[1])
