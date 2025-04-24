@@ -951,11 +951,11 @@ with tabs[2]:
                 if parsed_result:
                     # 키 이름 매핑
                     key_mappings = {
-                        "improvement": "개선대책" if target_language == "Korean", 
-                        "improved_freq": "개선 후 빈도" if target_language == "Korean", 
-                        "improved_intensity": "개선 후 강도" if target_language == "Korean",
-                        "improved_t": "개선 후 T" if target_language == "Korean",
-                        "reduction_rate": "T 감소율" if target_language == "Korean" 
+                        "improvement": "개선대책" if target_language == "Korean" else "improvement_plan",
+                        "improved_freq": "개선 후 빈도" if target_language == "Korean" else "improved_frequency",
+                        "improved_intensity": "개선 후 강도" if target_language == "Korean" else "improved_intensity",
+                        "improved_t": "개선 후 T" if target_language == "Korean" else "improved_T",
+                        "reduction_rate": "T 감소율" if target_language == "Korean" else "reduction_rate"
                     }
                     
                     # 결과 표시
